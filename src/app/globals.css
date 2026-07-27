@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #ffffff;
+  --surface: #f7f7f8;
+  --surface-2: #efeff2;
+  --text: #171717;
+  --text-muted: #52525b;
+  --border: rgba(23, 23, 23, 0.08);
+  --brand: #171717;
+  --brand-soft: #efeff2;
+  --radius: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0a0a;
+    --surface: #171717;
+    --surface-2: #1f1f1f;
+    --text: #fafafa;
+    --text-muted: #a1a1aa;
+    --border: rgba(255, 255, 255, 0.08);
+    --brand: #fafafa;
+    --brand-soft: #1f1f1f;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', 'SF Pro Text', 'PingFang SC', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* 毛玻璃 */
+.glass {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+@media (prefers-color-scheme: dark) {
+  .glass {
+    background: rgba(20, 20, 20, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* 灵动岛动画 */
+@keyframes island-expand {
+  from { transform: translateX(-50%) scaleX(0.8); opacity: 0.6; }
+  to   { transform: translateX(-50%) scaleX(1);   opacity: 1; }
+}
+.island-enter {
+  animation: island-expand 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}

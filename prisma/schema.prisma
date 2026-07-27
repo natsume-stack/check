@@ -1,0 +1,170 @@
+// Prisma schema for check system
+// Database: Vercel Postgres (Neon-compatible PostgreSQL)
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── 用户 ────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  passwordHash  String
+  nickname      String   @default("")
+  avatarUrl     String?
+  role          Role     @default(USER)
+  fingerprint   String?  // 最近一次登录的设备指纹（SHA-256 base64）
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastSeenAt    DateTime? // 最近心跳时间，用于在线判定
+
+  sessions      Session[]
+  loginRecords  LoginRecord[]
+  heartbeats    Heartbeat[]
+  friendsAsUser Friend[]    @relation("UserFriends")
+  friendsAsOther Friend[]   @relation("OtherFriends")
+  friendRequestsReceived FriendRequest[] @relation("RequestTo")
+  friendRequestsSent     FriendRequest[] @relation("RequestFrom")
+
+  @@index([username])
+  @@index([lastSeenAt])
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+// ─── 加密会话（LokiBox 兼容）────────────────────────
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  sessionKey   String   // base64(32 bytes) — AES-256 key 下发给客户端
+  csrfNonce    String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ─── 登录记录（IP + 位置 + 指纹）────────────────────
+
+model LoginRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  ip            String
+  // 地理位置（多源联合定位加权平均后）
+  country       String?
+  region        String?
+  city          String?
+  latitude      Float?
+  longitude     Float?
+  accuracyKm    Float?
+  // 网络特征
+  asn           String?
+  org           String?
+  timezone      String?
+  // 设备
+  fingerprint   String?
+  userAgent     String?
+  // 元数据
+  success       Boolean
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([ip])
+  @@index([createdAt])
+}
+
+// ─── 心跳 / Presence ────────────────────────────────
+
+model Heartbeat {
+  id           String   @id @default(cuid())
+  userId       String
+  mapId        String
+  playerId     Int?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, mapId])
+  @@index([createdAt])
+}
+
+// ─── 好友 ────────────────────────────────────────────
+
+model Friend {
+  id           String   @id @default(cuid())
+  userId       String
+  otherId      String
+  createdAt    DateTime @default(now())
+
+  user  User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  other User @relation("OtherFriends", fields: [otherId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, otherId])
+  @@index([userId])
+  @@index([otherId])
+}
+
+model FriendRequest {
+  id           String   @id @default(cuid())
+  fromId       String
+  toId         String
+  createdAt    DateTime @default(now())
+
+  from User @relation("RequestFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to   User @relation("RequestTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@unique([fromId, toId])
+  @@index([toId])
+}
+
+// ─── 程序参数远程配置 ───────────────────────────────
+
+model ProgramConfig {
+  id           String   @id @default(cuid())
+  // 程序标识，例如 "lokibox"
+  programId    String   @default("lokibox")
+  // feature id，例如 "kill-aura"，或 "*" 表示全局
+  featureId    String
+  // JSON 序列化的参数覆盖（与客户端 schema 兼容）
+  config       Json
+  // 是否强制启用（true 时客户端必须应用且无法关闭）
+  enforced     Boolean  @default(false)
+  // 是否禁用此 feature（true 时客户端禁用且无法开启）
+  disabled     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([programId, featureId])
+  @@index([programId])
+}
+
+// ─── 审计日志 ────────────────────────────────────────
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorId      String?
+  action       String
+  target       String?
+  meta         Json?
+  createdAt    DateTime @default(now())
+
+  @@index([actorId])
+  @@index([createdAt])
+}

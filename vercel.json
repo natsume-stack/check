@@ -1,0 +1,12 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "pnpm build",
+  "devCommand": "pnpm dev",
+  "installCommand": "pnpm install",
+  "functions": {
+    "src/app/**/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "crons": []
+}
