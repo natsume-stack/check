@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       data: {
         userId: claims.sub,
         mapId,
-        playerId: parsed.data.player_id ?? null,
+        playerId: parsed.data?.player_id ?? null,
       },
     }),
   ]);
