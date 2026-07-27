@@ -46,14 +46,14 @@ enum Role {
 
 model Session {
   id           String   @id @default(cuid())
-  userId       String
+  userId       String?  // 握手时未登录，登录后回填
   sessionKey   String   // base64(32 bytes) — AES-256 key 下发给客户端
   csrfNonce    String?
   createdAt    DateTime @default(now())
   expiresAt    DateTime
   revokedAt    DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
