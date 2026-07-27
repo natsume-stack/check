@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
   const users = await prisma.user.findMany({
     where: {
       OR: [
-        { username: { contains: kw, mode: 'insensitive' } },
-        { nickname: { contains: kw, mode: 'insensitive' } },
+        { username: { contains: kw } },
+        { nickname: { contains: kw } },
       ],
       NOT: { id: claims.sub },
     },

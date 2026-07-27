@@ -27,8 +27,8 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
   if (q) {
     where.OR = [
-      { username: { contains: q, mode: 'insensitive' } },
-      { nickname: { contains: q, mode: 'insensitive' } },
+      { username: { contains: q } },
+      { nickname: { contains: q } },
     ];
   }
   if (onlineOnly) {
