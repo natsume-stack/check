@@ -1,13 +1,12 @@
 // Prisma schema for check system
-// Database: Vercel Postgres (Neon-compatible PostgreSQL)
+// Database: TiDB Serverless (MySQL 8.0 compatible)
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
