@@ -7,13 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import {
-  verifyPassword,
-  signJwt,
-  setSessionCookie,
-} from '@/lib/crypto';
+import { verifyPassword } from '@/lib/crypto';
 import { locateIp } from '@/lib/ip-locate';
-import { SESSION_COOKIE_NAME } from '@/lib/auth';
+import { SESSION_COOKIE_NAME, setSessionCookie } from '@/lib/auth';
 import { getClientIp } from '@/lib/request';
 
 interface Body {
