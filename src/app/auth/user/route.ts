@@ -8,7 +8,6 @@ import { ok, fail } from '@/lib/crypto';
 import {
   parseEncryptedRequest,
   encryptedJsonResponse,
-  getLokiBoxUser,
 } from '@/lib/request';
 import { getLokiBoxUser as getClaims } from '@/lib/auth';
 
