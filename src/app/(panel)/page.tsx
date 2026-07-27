@@ -3,6 +3,10 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import DashboardClient from './DashboardClient';
 
+// 强制动态渲染，避免 build 时预渲染连接数据库
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 async function fetchStats() {
   // 内部直接调用 prisma 拿数据，绕过 fetch
   const { prisma } = await import('@/lib/prisma');

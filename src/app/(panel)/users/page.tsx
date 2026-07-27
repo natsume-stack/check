@@ -4,6 +4,9 @@ import { headers } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import UsersClient from './UsersClient';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function UsersPage() {
   const h = await headers();
   const req = { headers: h } as any;

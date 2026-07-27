@@ -4,6 +4,9 @@ import { headers } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import ProgramsClient from './ProgramsClient';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function ProgramsPage() {
   const h = await headers();
   const req = { headers: h } as any;
