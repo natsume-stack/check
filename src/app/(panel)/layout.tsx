@@ -15,7 +15,7 @@ export default function PanelLayout({
             </div>
             <div>
               <div className="font-bold tracking-tight">check</div>
-              <div className="text-xs text-[var(--text-muted)]">验证控制台</div>
+              <div className="text-xs text-[var(--text-muted)]">LokiBox 验证控制台</div>
             </div>
           </div>
         </div>

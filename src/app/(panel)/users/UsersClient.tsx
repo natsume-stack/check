@@ -77,7 +77,7 @@ export default function UsersClient({ initialUsers }: { initialUsers: User[] }) 
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">用户管理</h1>
+          <h1 className="text-3xl font-bold tracking-tight">LokiBox 用户管理</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">
             在线状态 / 登录 IP / 设备指纹 / 地理位置
           </p>

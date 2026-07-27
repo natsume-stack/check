@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import DashboardClient from './DashboardClient';
 
-async function fetchStats(cookie: string) {
+async function fetchStats() {
   // 内部直接调用 prisma 拿数据，绕过 fetch
   const { prisma } = await import('@/lib/prisma');
   const { onlineThresholdMs } = await import('@/lib/auth');
@@ -21,8 +21,11 @@ async function fetchStats(cookie: string) {
     todayLogins,
     totalPrograms,
     enforcedPrograms,
+    disabledPrograms,
     countryAgg,
+    mapAgg,
     recentHeartbeats,
+    lastHeartbeat,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { lastSeenAt: { gt: onlineCutoff } } }),
@@ -32,6 +35,7 @@ async function fetchStats(cookie: string) {
     }),
     prisma.programConfig.count(),
     prisma.programConfig.count({ where: { enforced: true } }),
+    prisma.programConfig.count({ where: { disabled: true } }),
     prisma.loginRecord.groupBy({
       by: ['country'],
       where: { createdAt: { gt: dayAgo }, success: true },
@@ -39,8 +43,20 @@ async function fetchStats(cookie: string) {
       orderBy: { _count: { country: 'desc' } },
       take: 10,
     }),
+    prisma.heartbeat.groupBy({
+      by: ['mapId'],
+      where: { createdAt: { gt: dayAgo } },
+      _count: { _all: true },
+      orderBy: { _count: { mapId: 'desc' } },
+      take: 10,
+    }),
     prisma.heartbeat.findMany({
       where: { createdAt: { gt: dayAgo } },
+      select: { createdAt: true },
+    }),
+    prisma.heartbeat.findFirst({
+      where: { createdAt: { gt: dayAgo } },
+      orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     }),
   ]);
@@ -62,11 +78,17 @@ async function fetchStats(cookie: string) {
     todayLogins,
     totalPrograms,
     enforcedPrograms,
+    disabledPrograms,
     countryDistribution: countryAgg.map(c => ({
       country: c.country ?? 'Unknown',
       count: c._count._all,
     })),
+    mapActivity: mapAgg.map(m => ({
+      mapId: m.mapId,
+      count: m._count._all,
+    })),
     hourlyHeartbeats,
+    lastHeartbeatAt: lastHeartbeat?.createdAt.toISOString() ?? null,
   };
 }
 
@@ -76,7 +98,7 @@ export default async function DashboardPage() {
   const claims = await getAdminClaims(req);
   if (!claims) redirect('/login');
 
-  const stats = await fetchStats('');
+  const stats = await fetchStats();
 
   return <DashboardClient stats={stats} />;
 }

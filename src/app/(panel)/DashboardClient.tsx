@@ -7,8 +7,20 @@ interface Stats {
   todayLogins: number;
   totalPrograms: number;
   enforcedPrograms: number;
+  disabledPrograms: number;
   countryDistribution: { country: string; count: number }[];
+  mapActivity: { mapId: string; count: number }[];
   hourlyHeartbeats: number[];
+  lastHeartbeatAt: string | null;
+}
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return '从未';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  return `${Math.floor(diff / 86_400_000)} 天前`;
 }
 
 function StatCard({
@@ -52,36 +64,59 @@ function StatCard({
 export default function DashboardClient({ stats }: { stats: Stats }) {
   const maxHeartbeats = Math.max(1, ...stats.hourlyHeartbeats);
   const maxCountry = Math.max(1, ...stats.countryDistribution.map(c => c.count));
+  const maxMap = Math.max(1, ...stats.mapActivity.map(m => m.count));
+  const totalHeartbeats24h = stats.hourlyHeartbeats.reduce((a, b) => a + b, 0);
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">仪表盘</h1>
-        <p className="text-sm text-[var(--text-muted)] mt-1">系统运行状态概览</p>
+        <p className="text-sm text-[var(--text-muted)] mt-1">
+          LokiBox 运行状态概览 · 最近心跳 {timeAgo(stats.lastHeartbeatAt)}
+        </p>
       </div>
 
-      {/* 数据卡片 */}
+      {/* 顶部数据卡片 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="总用户数"
+          label="LokiBox 注册用户"
           value={stats.totalUsers}
           sub={`+${stats.todayNewUsers} 今日新增`}
         />
         <StatCard
-          label="在线用户"
+          label="在线玩家"
           value={stats.onlineUsers}
           sub="最近 60 秒内有心跳"
           accent
         />
         <StatCard
-          label="今日登录"
+          label="今日启动次数"
           value={stats.todayLogins}
-          sub="成功登录次数"
+          sub="成功登录 LokiBox"
         />
         <StatCard
-          label="程序配置"
+          label="24h 心跳总数"
+          value={totalHeartbeats24h}
+          sub="游戏内 presence 上报"
+        />
+      </div>
+
+      {/* 次级卡片：功能配置 */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard
+          label="功能配置数"
           value={stats.totalPrograms}
-          sub={`${stats.enforcedPrograms} 个强制启用`}
+          sub="ProgramConfig 条目"
+        />
+        <StatCard
+          label="强制启用"
+          value={stats.enforcedPrograms}
+          sub="客户端必须开启"
+        />
+        <StatCard
+          label="远程禁用"
+          value={stats.disabledPrograms}
+          sub="客户端无法开启"
         />
       </div>
 
@@ -90,15 +125,15 @@ export default function DashboardClient({ stats }: { stats: Stats }) {
         <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="font-bold tracking-tight">24 小时心跳趋势</h2>
-              <p className="text-xs text-[var(--text-muted)]">每小时心跳次数</p>
+              <h2 className="font-bold tracking-tight">24 小时游戏活跃度</h2>
+              <p className="text-xs text-[var(--text-muted)]">每小时 presence 心跳次数</p>
             </div>
           </div>
           <div className="flex items-end gap-1 h-32">
             {stats.hourlyHeartbeats.map((v, i) => (
               <div
                 key={i}
-                className="flex-1 rounded-t-md bg-[var(--brand)] opacity-80 hover:opacity-100 transition"
+                className="flex-1 rounded-t-md bg-[var(--brand)] hover:opacity-100 transition"
                 style={{
                   height: `${(v / maxHeartbeats) * 100}%`,
                   minHeight: v > 0 ? '4px' : '2px',
@@ -114,11 +149,11 @@ export default function DashboardClient({ stats }: { stats: Stats }) {
           </div>
         </div>
 
-        {/* 国家分布 */}
+        {/* 玩家地理分布 */}
         <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6">
           <div className="mb-4">
-            <h2 className="font-bold tracking-tight">IP 国家分布 Top 10</h2>
-            <p className="text-xs text-[var(--text-muted)]">最近 24 小时登录</p>
+            <h2 className="font-bold tracking-tight">玩家地理分布 Top 10</h2>
+            <p className="text-xs text-[var(--text-muted)]">最近 24 小时登录的 IP 国家</p>
           </div>
           {stats.countryDistribution.length === 0 ? (
             <div className="text-sm text-[var(--text-muted)] py-8 text-center">
@@ -139,6 +174,41 @@ export default function DashboardClient({ stats }: { stats: Stats }) {
                   </div>
                   <div className="text-sm font-mono tabular-nums w-12 text-right">
                     {c.count}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 活跃地图 Top 10 */}
+        <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6 lg:col-span-2">
+          <div className="mb-4">
+            <h2 className="font-bold tracking-tight">活跃地图 Top 10</h2>
+            <p className="text-xs text-[var(--text-muted)]">最近 24 小时 Box3 地图心跳上报次数</p>
+          </div>
+          {stats.mapActivity.length === 0 ? (
+            <div className="text-sm text-[var(--text-muted)] py-8 text-center">
+              暂无心跳数据
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {stats.mapActivity.map((m, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="text-xs text-[var(--text-muted)] w-6 text-right tabular-nums">
+                    #{i + 1}
+                  </div>
+                  <div className="text-sm font-mono flex-1 truncate" title={m.mapId}>
+                    {m.mapId}
+                  </div>
+                  <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
+                    <div
+                      className="h-full bg-[var(--brand)] rounded-full"
+                      style={{ width: `${(m.count / maxMap) * 100}%` }}
+                    />
+                  </div>
+                  <div className="text-sm font-mono tabular-nums w-12 text-right">
+                    {m.count}
                   </div>
                 </div>
               ))}

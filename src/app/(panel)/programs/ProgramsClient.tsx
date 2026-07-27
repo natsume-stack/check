@@ -135,9 +135,9 @@ export default function ProgramsClient({
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">程序管理</h1>
+          <h1 className="text-3xl font-bold tracking-tight">LokiBox 程序管理</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">
-            远程配置各 feature 参数 / 强制启用 / 禁用
+            远程配置 LokiBox 各 feature 参数 / 强制启用 / 远程禁用
           </p>
         </div>
         <button

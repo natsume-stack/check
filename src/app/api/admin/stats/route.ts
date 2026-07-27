@@ -1,12 +1,14 @@
 /**
- * GET /api/admin/stats — 仪表盘数据
+ * GET /api/admin/stats — 仪表盘数据（LokiBox 使用情况）
  *
  * 返回：
- *   - 总用户数 / 在线数
- *   - 今日新增 / 今日登录次数
- *   - 程序配置数 / 强制启用数
- *   - IP 国家分布 Top 10
- *   - 24h 心跳趋势
+ *   - LokiBox 注册用户数 / 在线玩家数
+ *   - 今日新增 / 今日 LokiBox 启动次数
+ *   - 功能配置数 / 强制启用数 / 远程禁用数
+ *   - 玩家 IP 国家分布 Top 10
+ *   - 24h presence 心跳趋势（按小时聚合）
+ *   - 活跃 Box3 地图 Top 10
+ *   - 最近一次心跳时间
  */
 
 import { NextRequest } from 'next/server';
@@ -33,8 +35,11 @@ export async function GET(req: NextRequest) {
     todayLogins,
     totalPrograms,
     enforcedPrograms,
+    disabledPrograms,
     countryAgg,
-    heartbeatAgg,
+    mapAgg,
+    recentHeartbeats,
+    lastHeartbeat,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { lastSeenAt: { gt: onlineCutoff } } }),
@@ -44,6 +49,7 @@ export async function GET(req: NextRequest) {
     }),
     prisma.programConfig.count(),
     prisma.programConfig.count({ where: { enforced: true } }),
+    prisma.programConfig.count({ where: { disabled: true } }),
     prisma.loginRecord.groupBy({
       by: ['country'],
       where: { createdAt: { gt: dayAgo }, success: true },
@@ -58,13 +64,17 @@ export async function GET(req: NextRequest) {
       orderBy: { _count: { mapId: 'desc' } },
       take: 10,
     }),
+    prisma.heartbeat.findMany({
+      where: { createdAt: { gt: dayAgo } },
+      select: { createdAt: true },
+    }),
+    prisma.heartbeat.findFirst({
+      where: { createdAt: { gt: dayAgo } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
   ]);
 
-  // 24h 心跳按小时聚合
-  const recentHeartbeats = await prisma.heartbeat.findMany({
-    where: { createdAt: { gt: dayAgo } },
-    select: { createdAt: true },
-  });
   const hourlyHeartbeats = new Array(24).fill(0);
   for (const h of recentHeartbeats) {
     const hourAgo = Math.floor(
@@ -82,15 +92,17 @@ export async function GET(req: NextRequest) {
     todayLogins,
     totalPrograms,
     enforcedPrograms,
+    disabledPrograms,
     countryDistribution: countryAgg.map(c => ({
       country: c.country ?? 'Unknown',
       count: c._count._all,
     })),
-    mapActivity: heartbeatAgg.map(m => ({
+    mapActivity: mapAgg.map(m => ({
       mapId: m.mapId,
       count: m._count._all,
     })),
     hourlyHeartbeats,
+    lastHeartbeatAt: lastHeartbeat?.createdAt.toISOString() ?? null,
   });
 }
 
