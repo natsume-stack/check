@@ -91,6 +91,7 @@ const ALLOWED_ORIGINS = [
   'https://dao3.fun',
   'https://play.dao3.fun',
   'https://www.dao3.fun',
+  'https://check.cdk.lat',
 ];
 
 function corsHeaders(req: NextRequest): Record<string, string> {

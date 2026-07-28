@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
 const PUBLIC_PATHS = ['/', '/login', '/register'];
-const PUBLIC_PREFIXES = ['/api/auth/login', '/api/auth/register', '/api/auth/me'];
+const PUBLIC_PREFIXES = [
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/me',
+  '/admin/pack', // Bearer token 鉴权，不走 cookie
+];
 
 // LokiBox 加密 API 路径前缀（运行在 Box3 游戏页 origin，需要 CORS）
-// 注意：用 startsWith 匹配，所以前缀不带尾斜杠也能命中 /friends 和 /friends/xxx
 const LOKIBOX_API_PREFIXES = [
   '/session',
   '/auth',
@@ -13,6 +17,7 @@ const LOKIBOX_API_PREFIXES = [
   '/presence',
   '/friends',
   '/loader',
+  '/pack',
   '/users/search',
 ];
 
@@ -22,6 +27,7 @@ const ALLOWED_ORIGINS = [
   'https://dao3.fun',
   'https://play.dao3.fun',
   'https://www.dao3.fun',
+  'https://check.cdk.lat',
 ];
 
 function getAllowedOrigin(req: NextRequest): string | null {
