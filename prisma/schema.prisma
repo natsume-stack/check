@@ -277,6 +277,17 @@ model UsedNonce {
   @@index([createdAt])
 }
 
+// ─── 系统配置（全局开关 / 键值对）────────────────────
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique // 配置键，如 "pack_distribution_disabled"
+  value     String   @default("false") // 配置值，"true" / "false"
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
 // ─── 邀请码（注册控制）──────────────────────────────
 
 model InvitationCode {

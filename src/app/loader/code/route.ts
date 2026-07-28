@@ -25,6 +25,15 @@ interface CodePayload {
   featureIds: string[];
 }
 
+/** 检查全局程序下发开关 */
+async function isPackDistributionDisabled(): Promise<boolean> {
+  const config = await prisma.systemConfig.findUnique({
+    where: { key: 'pack_distribution_disabled' },
+    select: { value: true },
+  }).catch(() => null);
+  return config?.value === 'true';
+}
+
 // 用户状态 reason → fail code 映射
 const STATUS_FAIL_CODE: Record<string, string> = {
   BANNED: 'ACCOUNT_BANNED',
@@ -33,6 +42,14 @@ const STATUS_FAIL_CODE: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  // 全局程序下发开关检查
+  if (await isPackDistributionDisabled()) {
+    return encryptedJsonResponse(
+      fail('DISTRIBUTION_DISABLED', 'Code distribution has been globally disabled'),
+      req
+    );
+  }
+
   const ip = getClientIp(req);
   const rl = await checkRateLimit(ip, { key: 'loader-code', windowMs: 60_000, max: 20 });
   if (!rl.ok) {

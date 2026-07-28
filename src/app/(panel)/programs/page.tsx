@@ -31,6 +31,12 @@ export default async function ProgramsPage() {
     },
   });
 
+  // 查询全局下发开关状态
+  const distConfig = await prisma.systemConfig.findUnique({
+    where: { key: 'pack_distribution_disabled' },
+    select: { value: true },
+  }).catch(() => null);
+
   // 序列化 Date
   const serialized = packages.map(p => ({
     ...p,
@@ -39,5 +45,10 @@ export default async function ProgramsPage() {
     updatedAt: p.updatedAt.toISOString(),
   }));
 
-  return <ProgramsClient initialPackages={serialized} />;
+  return (
+    <ProgramsClient
+      initialPackages={serialized}
+      initialDistributionDisabled={distConfig?.value === 'true'}
+    />
+  );
 }

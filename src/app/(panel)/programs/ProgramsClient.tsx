@@ -33,8 +33,10 @@ function makeVersion() {
 
 export default function ProgramsClient({
   initialPackages,
+  initialDistributionDisabled,
 }: {
   initialPackages: Pkg[];
+  initialDistributionDisabled: boolean;
 }) {
   const [packages, setPackages] = useState<Pkg[]>(initialPackages);
   const [featureId, setFeatureId] = useState('lokibox-pack');
@@ -48,6 +50,8 @@ export default function ProgramsClient({
   const [success, setSuccess] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState('');
+  const [distDisabled, setDistDisabled] = useState(initialDistributionDisabled);
+  const [togglingDist, setTogglingDist] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activePackages = packages.filter(p => p.isActive);
@@ -179,24 +183,79 @@ export default function ProgramsClient({
     setSuccess('');
   }
 
+  async function toggleDistribution() {
+    const newState = !distDisabled;
+    const action = newState ? '禁用' : '开启';
+    if (!confirm(`确认${action}全局程序下发？${newState ? '禁用后所有客户端将无法拉取代码包。' : '开启后客户端可正常拉取代码包。'}`)) return;
+    setTogglingDist(true);
+    setError('');
+    try {
+      const resp = await fetch('/api/admin/pack-distribution', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'check-admin',
+        },
+        body: JSON.stringify({ disabled: newState }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || `${action}失败`);
+      }
+      setDistDisabled(newState);
+      setSuccess(`全局程序下发已${action}`);
+    } catch (err: any) {
+      setError(err.message || `${action}失败`);
+    } finally {
+      setTogglingDist(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">代码包下发管理</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">
             上传 / 管理 LokiBox 客户端代码包，支持版本回滚与完整性校验
           </p>
         </div>
-        <button
-          onClick={refreshList}
-          disabled={refreshing}
-          className="h-10 px-4 rounded-xl bg-[var(--surface)] border border-[var(--border)] font-semibold text-sm hover:opacity-80 transition disabled:opacity-50"
-        >
-          {refreshing ? '刷新中…' : '↻ 刷新'}
-        </button>
+        <div className="flex gap-2 items-center">
+          {/* 全局下发开关 */}
+          <div className={`flex items-center gap-2 px-4 h-10 rounded-xl border transition ${
+            distDisabled
+              ? 'bg-red-500/10 border-red-500/30 text-red-500'
+              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
+          }`}>
+            <span className="text-xs font-semibold">
+              {distDisabled ? '已禁用' : '已开启'}
+            </span>
+            <button
+              onClick={toggleDistribution}
+              disabled={togglingDist}
+              className="h-6 px-3 rounded-lg text-xs font-bold bg-[var(--brand)] text-[var(--bg)] hover:opacity-80 transition disabled:opacity-50"
+            >
+              {togglingDist ? '处理中…' : (distDisabled ? '开启下发' : '禁用下发')}
+            </button>
+          </div>
+          {/* 刷新 */}
+          <button
+            onClick={refreshList}
+            disabled={refreshing}
+            className="h-10 px-4 rounded-xl bg-[var(--surface)] border border-[var(--border)] font-semibold text-sm hover:opacity-80 transition disabled:opacity-50"
+          >
+            {refreshing ? '刷新中…' : '↻ 刷新'}
+          </button>
+        </div>
       </div>
+
+      {/* 全局禁用提示 */}
+      {distDisabled && (
+        <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+          ⚠ 全局程序下发已禁用，所有客户端将无法拉取代码包。点击上方「开启下发」恢复。
+        </div>
+      )}
 
       {/* Messages */}
       {error && (
