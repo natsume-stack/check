@@ -12,6 +12,7 @@ const LOKIBOX_API_PREFIXES = [
   '/user',
   '/presence',
   '/friends',
+  '/loader',
   '/users/search',
 ];
 

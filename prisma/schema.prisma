@@ -24,6 +24,13 @@ model User {
   updatedAt     DateTime @updatedAt
   lastSeenAt    DateTime? // 最近心跳时间，用于在线判定
 
+  // 账号状态控制（管理员可操作）
+  status        UserStatus @default(ACTIVE)
+  bannedAt      DateTime?
+  bannedReason  String?
+  bannedById    String?   // 执行封禁的管理员 ID
+  expiresAt     DateTime? // 账号到期时间，null = 永久
+
   sessions      Session[]
   loginRecords  LoginRecord[]
   heartbeats    Heartbeat[]
@@ -34,11 +41,19 @@ model User {
 
   @@index([username])
   @@index([lastSeenAt])
+  @@index([status])
 }
 
 enum Role {
   ADMIN
   USER
+}
+
+enum UserStatus {
+  ACTIVE    // 正常
+  BANNED    // 已封禁
+  EXPIRED   // 已到期
+  SUSPENDED // 已暂停（管理员临时冻结）
 }
 
 // ─── 加密会话（LokiBox 兼容）────────────────────────
@@ -51,6 +66,10 @@ model Session {
   createdAt    DateTime @default(now())
   expiresAt    DateTime
   revokedAt    DateTime?
+  revokedReason String? // BANNED / EXPIRED / LOGOUT / ADMIN_REVOKE / INTEGRITY_FAIL
+
+  // 本次加载的代码包组合哈希（心跳校验完整性）
+  codeHash     String?
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -80,6 +99,7 @@ model LoginRecord {
   userAgent     String?
   // 元数据
   success       Boolean
+  failureReason String?  // BANNED / EXPIRED / WRONG_PASSWORD / SUSPENDED
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -96,6 +116,8 @@ model Heartbeat {
   userId       String
   mapId        String
   playerId     Int?
+  // 心跳时上报的代码包哈希，用于完整性校验
+  codeHash     String?
   createdAt    DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -133,7 +155,7 @@ model FriendRequest {
   @@index([toId])
 }
 
-// ─── 程序参数远程配置 ───────────────────────────────
+// ─── LokiBox 功能配置（远程控制）─────────────────────
 
 model ProgramConfig {
   id           String   @id @default(cuid())
@@ -154,16 +176,45 @@ model ProgramConfig {
   @@index([programId])
 }
 
+// ─── 加密代码包（服务端下发）────────────────────────
+
+model CodePackage {
+  id           String   @id @default(cuid())
+  // feature 标识，例如 "kill-aura", "esp", "fly"
+  featureId    String
+  // 版本号（语义化版本）
+  version      String
+  // 代码包（明文 JS 源码，LongText）
+  // 字段名保留 encryptedCode 以兼容客户端 schema，实际存储明文
+  // 响应时由 encryptedJsonResponse 用 sessionKey 统一加密
+  encryptedCode String  @db.LongText
+  // 代码包哈希（SHA-256，用于完整性校验）
+  codeHash     String
+  // 代码包大小（字节，用于统计）
+  sizeBytes    Int
+  // 是否当前激活版本（同一 featureId 只有一个 active）
+  isActive     Boolean  @default(true)
+  // 构建信息
+  builtAt      DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([featureId, version])
+  @@index([featureId])
+  @@index([isActive])
+}
+
 // ─── 审计日志 ────────────────────────────────────────
 
 model AuditLog {
   id           String   @id @default(cuid())
   actorId      String?
-  action       String
-  target       String?
+  action       String   // BAN / UNBAN / SUSPEND / SET_EXPIRY / UPLOAD_CODE / UPDATE_CONFIG
+  target       String?  // 目标用户 ID 或 featureId
   meta         Json?
   createdAt    DateTime @default(now())
 
   @@index([actorId])
   @@index([createdAt])
+  @@index([action])
 }
