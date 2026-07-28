@@ -30,7 +30,6 @@ interface RegisterPayload {
   password: string;
   auth?: string;       // Box3 平台 Authorization，可选
   fingerprint?: string;
-  invitationCode?: string; // 邀请码（必填）
 }
 
 const USERNAME_RE = /^[a-zA-Z0-9_-]{3,20}$/;
@@ -63,62 +62,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { username, password, fingerprint, invitationCode } = payload;
+  const { username, password, fingerprint } = payload;
 
   // 校验
   if (!username || !password) {
     return encryptedJsonResponse(
       fail('VALIDATION_ERROR', 'Missing username or password'),
-      req
-    );
-  }
-
-  // 邀请码校验（必填）
-  if (!invitationCode) {
-    return encryptedJsonResponse(
-      fail('INVITATION_REQUIRED', '邀请码必填'),
-      req
-    );
-  }
-
-  // 验证邀请码
-  const invite = await prisma.invitationCode.findUnique({
-    where: { code: invitationCode },
-  });
-
-  if (!invite) {
-    return encryptedJsonResponse(
-      fail('INVALID_INVITATION', '邀请码无效'),
-      req
-    );
-  }
-
-  // 必须是 LOKI 类型
-  if (invite.targetType !== 'LOKI') {
-    return encryptedJsonResponse(
-      fail('INVALID_INVITATION', '邀请码类型错误'),
-      req
-    );
-  }
-
-  // 检查邀请码状态
-  if (invite.disabledAt) {
-    return encryptedJsonResponse(
-      fail('INVALID_INVITATION', '邀请码已被禁用'),
-      req
-    );
-  }
-
-  if (invite.expiresAt && invite.expiresAt < new Date()) {
-    return encryptedJsonResponse(
-      fail('INVALID_INVITATION', '邀请码已过期'),
-      req
-    );
-  }
-
-  if (invite.usedCount >= invite.maxUses) {
-    return encryptedJsonResponse(
-      fail('INVALID_INVITATION', '邀请码使用次数已达上限'),
       req
     );
   }
@@ -181,16 +130,6 @@ export async function POST(req: NextRequest) {
   await prisma.lokiUser.update({
     where: { id: user.id },
     data: { lastSeenAt: new Date() },
-  });
-
-  // 增加邀请码使用次数，记录使用者
-  await prisma.invitationCode.update({
-    where: { id: invite.id },
-    data: {
-      usedCount: { increment: 1 },
-      usedById: user.id,
-      usedAt: new Date(),
-    },
   });
 
   // 创建 Session 并绑定 JWT

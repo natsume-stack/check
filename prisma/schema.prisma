@@ -103,6 +103,7 @@ model Session {
 
   // 本次加载的代码包组合哈希（心跳校验完整性）
   codeHash     String?
+  licenseNonce  String?  // 当前 license nonce（心跳续期用）
 
   user LokiUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -309,4 +310,19 @@ model InvitationCode {
   @@index([code])
   @@index([createdById])
   @@index([targetType])
+}
+
+// ─── 设备黑名单（封禁连坐）──────────────────────────
+
+model DeviceBlacklist {
+  id           String   @id @default(cuid())
+  fingerprint  String?  // 设备指纹（SHA-256 base64）
+  ip           String?  // IP 地址
+  reason       String   // 封禁原因
+  bannedUserId String?  // 被封禁的用户 ID
+  bannedById   String?  // 执行封禁的 AdminUser ID
+  createdAt    DateTime @default(now())
+
+  @@index([fingerprint])
+  @@index([ip])
 }

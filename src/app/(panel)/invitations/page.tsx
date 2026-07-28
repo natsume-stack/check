@@ -15,7 +15,8 @@ export default async function InvitationsPage() {
   if (claims.role !== 'SUPER_ADMIN') redirect('/');
 
   const codes = await prisma.invitationCode.findMany({
-    orderBy: [{ targetType: 'asc' }, { createdAt: 'desc' }],
+    where: { targetType: 'ADMIN' },
+    orderBy: [{ createdAt: 'desc' }],
     include: {
       createdBy: {
         select: { username: true },

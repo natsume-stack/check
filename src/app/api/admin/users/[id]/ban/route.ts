@@ -62,6 +62,46 @@ export async function POST(
     },
   });
 
+  // ── 连坐封禁：将设备指纹和最近 IP 加入黑名单 ──
+  // 1. 获取用户的指纹
+  const targetUser = await prisma.lokiUser.findUnique({
+    where: { id: params.id },
+    select: { fingerprint: true },
+  });
+
+  // 2. 获取用户最近的登录 IP（最多 5 个）
+  const recentLogins = await prisma.loginRecord.findMany({
+    where: { userId: params.id, success: true },
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+    select: { ip: true },
+  });
+
+  // 3. 将指纹加入黑名单
+  if (targetUser?.fingerprint) {
+    await prisma.deviceBlacklist.create({
+      data: {
+        fingerprint: targetUser.fingerprint,
+        reason: reason,
+        bannedUserId: params.id,
+        bannedById: claims.sub,
+      },
+    });
+  }
+
+  // 4. 将最近的 IP 加入黑名单（去重）
+  const uniqueIps = [...new Set(recentLogins.map(l => l.ip))];
+  for (const ip of uniqueIps) {
+    await prisma.deviceBlacklist.create({
+      data: {
+        ip,
+        reason: reason,
+        bannedUserId: params.id,
+        bannedById: claims.sub,
+      },
+    }).catch(() => {}); // 忽略重复 IP
+  }
+
   // 审计日志
   await prisma.auditLog.create({
     data: {

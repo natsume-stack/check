@@ -97,6 +97,26 @@ export async function getLokiBoxUser(
     }
   }
 
+  // ── 设备/IP 黑名单检查（封禁连坐）──
+  const requestIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
+    ?? req.headers.get('x-real-ip') ?? '';
+  const requestFp = req.headers.get('X-Fingerprint');
+
+  if (requestFp || requestIp) {
+    const blacklist = await prisma.deviceBlacklist.findFirst({
+      where: {
+        OR: [
+          ...(requestFp ? [{ fingerprint: requestFp }] : []),
+          ...(requestIp ? [{ ip: requestIp }] : []),
+        ],
+      },
+    }).catch(() => null);
+
+    if (blacklist) {
+      return null; // 设备/IP 在黑名单中，拒绝
+    }
+  }
+
   return claims;
 }
 

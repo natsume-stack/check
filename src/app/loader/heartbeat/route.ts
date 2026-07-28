@@ -12,7 +12,7 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { ok, fail } from '@/lib/crypto';
+import { ok, fail, signLicenseTicket, generateLicenseNonce } from '@/lib/crypto';
 import {
   parseEncryptedRequest,
   encryptedJsonResponse,
@@ -113,7 +113,10 @@ export async function POST(req: NextRequest) {
 
   // 完整性校驗：客戶端上報的 code_hash 必須與服務端 Session 中記錄的一致
   // 防止客戶端篡改代碼包後繼續心跳
-  if (parsed.sessionId) {
+  // 注意：license-check 心跳是授權守衛的續期請求，跳過 code_hash 校驗
+  //       （常規 presence 心跳才需要校驗 code_hash）
+  const isLicenseCheck = payload.map_id === 'license-check';
+  if (parsed.sessionId && !isLicenseCheck) {
     const session = await prisma.session.findUnique({
       where: { id: parsed.sessionId },
       select: { codeHash: true, revokedAt: true },
@@ -167,8 +170,33 @@ export async function POST(req: NextRequest) {
     }),
   ]);
 
+  // 生成签名的 license ticket
+  const licenseNonce = generateLicenseNonce();
+  const licenseTicket = JSON.stringify({
+    sid: parsed.sessionId,
+    ts: Date.now(),
+    nonce: licenseNonce,
+  });
+  const licenseSig = await signLicenseTicket(licenseTicket);
+
+  // 更新 session 的 licenseNonce
+  if (parsed.sessionId) {
+    await prisma.session.update({
+      where: { id: parsed.sessionId },
+      data: { licenseNonce },
+    }).catch(() => {});
+  }
+
   return encryptedJsonResponse(
-    ok({ status: 'OK' }),
+    ok({
+      status: 'OK',
+      license: {
+        sid: parsed.sessionId,
+        ts: Date.now(),
+        nonce: licenseNonce,
+      },
+      licenseSig,
+    }),
     req
   );
 }

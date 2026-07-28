@@ -265,6 +265,53 @@ export function fail(
   };
 }
 
+// ─── License 签名（ECDSA P-256，Web Crypto 兼容）──────
+
+let _licenseKey: CryptoKey | null = null;
+
+/** 获取 License 签名私钥（ECDSA P-256），以 Web Crypto CryptoKey 形式
+ *  浏览器端 crypto.subtle.verify 期望 raw 格式签名（r||s），
+ *  因此服务端也必须用 crypto.subtle.sign 产生 raw 格式签名，
+ *  而非 Node.js crypto.sign 的 DER 格式。
+ */
+async function getLicensePrivateKey(): Promise<CryptoKey> {
+  if (_licenseKey) return _licenseKey;
+  const pem = process.env.LICENSE_SIGNING_KEY;
+  if (!pem) throw new Error('LICENSE_SIGNING_KEY environment variable is not set');
+
+  // 提取 PEM 中的 base64 内容
+  const b64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\s/g, '');
+  const der = Buffer.from(b64, 'base64');
+
+  _licenseKey = await crypto.subtle.importKey(
+    'pkcs8',
+    der,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign']
+  );
+  return _licenseKey;
+}
+
+/** 签名 license ticket，返回 base64 签名（raw 格式，与浏览器兼容） */
+export async function signLicenseTicket(data: string): Promise<string> {
+  const key = await getLicensePrivateKey();
+  const sigBuf = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    key,
+    new TextEncoder().encode(data)
+  );
+  return Buffer.from(sigBuf).toString('base64');
+}
+
+/** 生成随机 nonce（32 字节 hex） */
+export function generateLicenseNonce(): string {
+  return crypto.randomBytes(16).toString('hex');
+}
+
 // ─── 设备指纹 ──────────────────────────────────────
 
 /** 服务端计算的复合指纹：UA + 平台 + 屏幕 + 时区，与客户端 getFingerprint 对齐 */
