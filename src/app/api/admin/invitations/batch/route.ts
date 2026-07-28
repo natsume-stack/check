@@ -51,17 +51,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const targetType = body.targetType === 'ADMIN' ? 'ADMIN' : 'LOKI';
-
-  let maxUses =
-    Number.isFinite(body.maxUses) && (body.maxUses as number) >= 1
-      ? Math.floor(body.maxUses as number)
-      : 1;
-
-  // ADMIN 类型强制 maxUses = 1
-  if (targetType === 'ADMIN') {
-    maxUses = 1;
-  }
+  // 只支持 ADMIN 内推类型，LOKI 客户端邀请码已废弃
+  const targetType = 'ADMIN';
+  const maxUses = 1; // ADMIN 强制单次使用
 
   let expiresAt: Date | null = null;
   if (

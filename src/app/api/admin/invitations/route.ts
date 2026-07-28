@@ -32,23 +32,15 @@ interface CreateBody {
   targetType?: string;
 }
 
-/** 根据 maxUses / expiresInHours / targetType 计算创建参数 */
+/** 根据 expiresInHours 计算创建参数（仅 ADMIN 类型） */
 function parseCreateParams(body: CreateBody): {
   maxUses: number;
   expiresAt: Date | null;
   targetType: string;
 } {
-  const targetType = body.targetType === 'ADMIN' ? 'ADMIN' : 'LOKI';
-
-  let maxUses =
-    Number.isFinite(body.maxUses) && (body.maxUses as number) >= 1
-      ? Math.floor(body.maxUses as number)
-      : 1;
-
-  // ADMIN 类型强制 maxUses = 1（一对一内推，防止滥用）
-  if (targetType === 'ADMIN') {
-    maxUses = 1;
-  }
+  // 只支持 ADMIN 内推类型，LOKI 客户端邀请码已废弃
+  const targetType = 'ADMIN';
+  const maxUses = 1; // ADMIN 强制单次使用
 
   let expiresAt: Date | null = null;
   if (
@@ -70,6 +62,7 @@ export async function GET(req: NextRequest) {
   if (!claims) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const invitations = await prisma.invitationCode.findMany({
+    where: { targetType: 'ADMIN' },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
