@@ -51,14 +51,131 @@ export async function getLokiBoxUser(
   return verifyJwt(auth.slice(7));
 }
 
-// ─── 管理员守卫 ────────────────────────────────────
+// ─── 分级守卫 ────────────────────────────────────
+//
+// 角色权限矩阵：
+//   USER        → 仪表盘（只读统计）
+//   AGENT       → 仪表盘 + 用户管理（不能改 role，不能操作 SUPER_ADMIN/其他 AGENT）
+//   SUPER_ADMIN → 全量开放
 
-export async function requireAdmin(
+import type { Role } from './crypto';
+
+/** 权限等级数值，用于比较 */
+const ROLE_LEVEL: Record<Role, number> = {
+  USER: 0,
+  AGENT: 1,
+  SUPER_ADMIN: 2,
+};
+
+/** 仅超级管理员（程序管理、代码包上传等敏感操作） */
+export async function requireSuperAdmin(
   req: NextRequest
 ): Promise<JwtClaims | null> {
   const claims = await getAdminClaims(req);
-  if (!claims || claims.role !== 'ADMIN') return null;
+  if (!claims || claims.role !== 'SUPER_ADMIN') return null;
   return claims;
+}
+
+/** 任何已登录用户（仪表盘 stats 等只读接口） */
+export async function requireUser(
+  req: NextRequest
+): Promise<JwtClaims | null> {
+  return getAdminClaims(req);
+}
+
+/** 代理或超级管理员（用户管理类操作） */
+export async function requireAgent(
+  req: NextRequest
+): Promise<JwtClaims | null> {
+  const claims = await getAdminClaims(req);
+  if (!claims) return null;
+  if (claims.role !== 'AGENT' && claims.role !== 'SUPER_ADMIN') return null;
+  return claims;
+}
+
+/** LokiBox Bearer token 版本：仅超级管理员（/admin/pack 上传代码包用） */
+export async function requireLokiBoxSuperAdmin(
+  req: NextRequest
+): Promise<JwtClaims | null> {
+  const claims = await getLokiBoxUser(req);
+  if (!claims || claims.role !== 'SUPER_ADMIN') return null;
+  return claims;
+}
+
+/**
+ * 越权防护：判断 actor 是否可以操作 target 用户。
+ *
+ * 规则：
+ *   - 不能操作自己（ban/suspend/delete 场景；查看允许）
+ *   - AGENT 不能操作 SUPER_ADMIN 或其他 AGENT
+ *   - SUPER_ADMIN 可以操作所有人（除自己外的删除/封禁）
+ */
+export function canManageUser(
+  actor: JwtClaims,
+  targetRole: Role,
+  opts: { allowSelf?: boolean } = {}
+): { ok: true } | { ok: false; reason: string } {
+  const { allowSelf = false } = opts;
+
+  // actor 自身角色校验（USER 根本不该到这里）
+  if (actor.role === 'USER') {
+    return { ok: false, reason: 'Insufficient permissions' };
+  }
+
+  // AGENT 不能操作 SUPER_ADMIN 或其他 AGENT
+  if (actor.role === 'AGENT') {
+    if (ROLE_LEVEL[targetRole] >= ROLE_LEVEL[actor.role]) {
+      return {
+        ok: false,
+        reason: 'Agents cannot operate on admins or other agents',
+      };
+    }
+  }
+
+  // self 检查由调用方决定（查看自己允许，封禁/删除自己禁止）
+  if (!allowSelf) {
+    // 注意：调用方需要自行比较 actor.sub 与 target.id，本函数只做角色校验
+    // 这里返回 ok=true，由调用方再做 self 校验
+  }
+
+  return { ok: true };
+}
+
+/**
+ * 修改 role 的权限校验。
+ *
+ * 规则：
+ *   - 只有 SUPER_ADMIN 能修改 role
+ *   - AGENT 完全不能修改 role
+ *   - SUPER_ADMIN 不能降级自己（防止误操作锁死）
+ *   - 不能把最后一个 SUPER_ADMIN 降级（需调用方先 count）
+ */
+export function canChangeRole(
+  actor: JwtClaims,
+  targetId: string,
+  _targetCurrentRole: Role,
+  newRole: Role
+): { ok: true } | { ok: false; reason: string } {
+  if (actor.role !== 'SUPER_ADMIN') {
+    return { ok: false, reason: 'Only super admin can change roles' };
+  }
+
+  // 不允许降级自己（防止误操作锁死）
+  if (actor.sub === targetId && ROLE_LEVEL[newRole] < ROLE_LEVEL.SUPER_ADMIN) {
+    return {
+      ok: false,
+      reason: 'Cannot demote yourself',
+    };
+  }
+
+  return { ok: true };
+}
+
+/** 向后兼容：requireAdmin = requireSuperAdmin（旧 API 仍可用） */
+export async function requireAdmin(
+  req: NextRequest
+): Promise<JwtClaims | null> {
+  return requireSuperAdmin(req);
 }
 
 // ─── 在线判定 ──────────────────────────────────────

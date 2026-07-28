@@ -30,6 +30,28 @@ const ALLOWED_ORIGINS = [
   'https://check.cdk.lat',
 ];
 
+// ─── 基于角色的路径访问控制 ───────────────────────────
+//
+// USER        → 仅 /（仪表盘）+ /api/admin/stats
+// AGENT       → + /users, /api/admin/users/*
+// SUPER_ADMIN → + /programs, /api/admin/programs/*, /api/admin/code-packages/*
+//
+// 注意：middleware 仅做粗粒度拦截，API 内部仍需用 requireAgent/requireSuperAdmin
+// 做深度防御（防中间件绕过）。
+
+const USER_ALLOWED_PREFIXES = ['/', '/api/admin/stats'];
+
+const AGENT_ONLY_PREFIXES = [
+  '/users',
+  '/api/admin/users',
+];
+
+const SUPER_ADMIN_ONLY_PREFIXES = [
+  '/programs',
+  '/api/admin/programs',
+  '/api/admin/code-packages',
+];
+
 function getAllowedOrigin(req: NextRequest): string | null {
   const origin = req.headers.get('origin');
   if (origin && ALLOWED_ORIGINS.includes(origin)) return origin;
@@ -40,6 +62,25 @@ function getJwtSecret(): Uint8Array {
   const s = process.env.JWT_SECRET;
   if (!s) return new Uint8Array();
   return new TextEncoder().encode(s);
+}
+
+function hasAccess(role: string | undefined, pathname: string): boolean {
+  if (role === 'SUPER_ADMIN') return true;
+
+  if (role === 'AGENT') {
+    if (SUPER_ADMIN_ONLY_PREFIXES.some(p => pathname.startsWith(p))) return false;
+    return true;
+  }
+
+  if (role === 'USER') {
+    // 仅允许 USER_ALLOWED_PREFIXES
+    if (AGENT_ONLY_PREFIXES.some(p => pathname.startsWith(p))) return false;
+    if (SUPER_ADMIN_ONLY_PREFIXES.some(p => pathname.startsWith(p))) return false;
+    // 其他路径（如 /）允许
+    return true;
+  }
+
+  return false;
 }
 
 export async function middleware(req: NextRequest) {
@@ -97,15 +138,26 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
+  let role: string | undefined;
   try {
-    await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
-    return NextResponse.next();
+    const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
+    role = payload.role as string | undefined;
   } catch {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
     return NextResponse.redirect(new URL('/login', req.url));
   }
+
+  // 按角色限制路径访问（防越权直访 URL）
+  if (!hasAccess(role, pathname)) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    return NextResponse.redirect(new URL('/', req.url));
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

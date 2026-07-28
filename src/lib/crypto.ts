@@ -142,10 +142,12 @@ function getJwtSecret(): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
+export type Role = 'SUPER_ADMIN' | 'AGENT' | 'USER';
+
 export interface JwtClaims {
   sub: string;   // user id
   username: string;
-  role: 'ADMIN' | 'USER';
+  role: Role;
 }
 
 export async function signJwt(claims: JwtClaims): Promise<string> {
@@ -164,7 +166,7 @@ export async function verifyJwt(token: string): Promise<JwtClaims | null> {
     return {
       sub: payload.sub as string,
       username: payload.username as string,
-      role: payload.role as 'ADMIN' | 'USER',
+      role: payload.role as Role,
     };
   } catch {
     return null;

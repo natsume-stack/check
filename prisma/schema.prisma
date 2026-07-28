@@ -45,8 +45,9 @@ model User {
 }
 
 enum Role {
-  ADMIN
-  USER
+  SUPER_ADMIN // 超级管理员：全量开放
+  AGENT       // 代理：可管理用户，不能看程序管理
+  USER        // 普通用户：只能看仪表盘
 }
 
 enum UserStatus {

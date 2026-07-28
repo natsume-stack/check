@@ -1,10 +1,20 @@
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import BottomIsland from '@/components/BottomIsland';
+import { getAdminClaims } from '@/lib/auth';
 
-export default function PanelLayout({
+export const dynamic = 'force-dynamic';
+
+export default async function PanelLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const h = await headers();
+  const req = { headers: h } as any;
+  const claims = await getAdminClaims(req);
+  if (!claims) redirect('/login');
+
   return (
     <div className="min-h-screen bg-[var(--bg)]">
       <header className="sticky top-0 z-30 glass border-b border-[var(--border)]">
@@ -15,7 +25,12 @@ export default function PanelLayout({
             </div>
             <div>
               <div className="font-bold tracking-tight">check</div>
-              <div className="text-xs text-[var(--text-muted)]">LokiBox 验证控制台</div>
+              <div className="text-xs text-[var(--text-muted)]">
+                LokiBox 验证控制台 · {claims.username}
+                {claims.role === 'SUPER_ADMIN' && ' · 超管'}
+                {claims.role === 'AGENT' && ' · 代理'}
+                {claims.role === 'USER' && ' · 用户'}
+              </div>
             </div>
           </div>
         </div>
@@ -23,7 +38,7 @@ export default function PanelLayout({
 
       <main className="max-w-7xl mx-auto px-6 py-8 pb-32">{children}</main>
 
-      <BottomIsland />
+      <BottomIsland role={claims.role} />
     </div>
   );
 }

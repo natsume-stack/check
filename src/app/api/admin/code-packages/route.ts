@@ -4,11 +4,11 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAdmin } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 
 export async function GET(req: NextRequest) {
-  const claims = await requireAdmin(req);
+  const claims = await requireSuperAdmin(req);
   if (!claims) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const packages = await prisma.codePackage.findMany({

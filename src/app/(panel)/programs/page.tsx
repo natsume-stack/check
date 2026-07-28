@@ -12,6 +12,8 @@ export default async function ProgramsPage() {
   const req = { headers: h } as any;
   const claims = await getAdminClaims(req);
   if (!claims) redirect('/login');
+  // 仅超级管理员可访问程序管理
+  if (claims.role !== 'SUPER_ADMIN') redirect('/');
 
   const programs = await prisma.programConfig.findMany({
     orderBy: [{ programId: 'asc' }, { featureId: 'asc' }],

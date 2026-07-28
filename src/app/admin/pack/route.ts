@@ -4,22 +4,22 @@
  * 请求体：text/plain（代码包 JS 源码）
  * 响应：ok({ id, codeHash, sizeBytes, version })
  *
- * 鉴权：Bearer admin token（JWT with role=ADMIN）
+ * 鉴权：Bearer admin token（JWT with role=SUPER_ADMIN）
  */
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ok, fail } from '@/lib/crypto';
-import { getLokiBoxUser } from '@/lib/auth';
+import { requireLokiBoxSuperAdmin } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 import { createHash } from 'crypto';
 
 const FEATURE_ID = 'lokibox-pack';
 
 export async function POST(req: NextRequest) {
-  // 鉴权：需要管理员权限
-  const claims = await getLokiBoxUser(req);
-  if (!claims || claims.role !== 'ADMIN') {
+  // 鉴权：需要超级管理员权限
+  const claims = await requireLokiBoxSuperAdmin(req);
+  if (!claims) {
     return jsonResponse({ error: 'Unauthorized' }, 401);
   }
 

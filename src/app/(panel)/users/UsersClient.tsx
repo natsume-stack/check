@@ -147,9 +147,14 @@ export default function UsersClient({ initialUsers }: { initialUsers: User[] }) 
                       <span className="font-bold truncate">
                         {u.nickname || u.username}
                       </span>
-                      {u.role === 'ADMIN' && (
+                      {u.role === 'SUPER_ADMIN' && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-md bg-[var(--brand)] text-[var(--bg)] font-semibold">
+                          超管
+                        </span>
+                      )}
+                      {u.role === 'AGENT' && (
                         <span className="text-xs px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] font-semibold">
-                          ADMIN
+                          代理
                         </span>
                       )}
                     </div>

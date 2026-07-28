@@ -12,6 +12,8 @@ export default async function UsersPage() {
   const req = { headers: h } as any;
   const claims = await getAdminClaims(req);
   if (!claims) redirect('/login');
+  // USER 角色无权访问用户管理
+  if (claims.role === 'USER') redirect('/');
 
   const users = await prisma.user.findMany({
     orderBy: { createdAt: 'desc' },

@@ -21,7 +21,7 @@ async function main() {
     data: {
       username: adminUsername,
       passwordHash,
-      role: 'ADMIN',
+      role: 'SUPER_ADMIN',
       nickname: 'Administrator',
     },
   });

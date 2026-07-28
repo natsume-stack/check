@@ -13,11 +13,11 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAdmin, onlineThresholdMs } from '@/lib/auth';
+import { requireUser, onlineThresholdMs } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 
 export async function GET(req: NextRequest) {
-  const claims = await requireAdmin(req);
+  const claims = await requireUser(req);
   if (!claims) {
     return jsonResponse({ error: 'Unauthorized' }, 401);
   }

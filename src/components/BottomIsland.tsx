@@ -4,16 +4,21 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+type Role = 'SUPER_ADMIN' | 'AGENT' | 'USER';
+
 interface NavItem {
   href: string;
   label: string;
   icon: React.ReactNode;
+  /** 允许访问的最小角色 */
+  minRole: Role;
 }
 
 const NAV_ITEMS: NavItem[] = [
   {
     href: '/',
     label: '仪表盘',
+    minRole: 'USER',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
         <rect x="3" y="3" width="7" height="9" rx="1.5" />
@@ -26,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     href: '/programs',
     label: '程序管理',
+    minRole: 'SUPER_ADMIN',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
         <polyline points="16 18 22 12 16 6" />
@@ -36,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     href: '/users',
     label: '用户管理',
+    minRole: 'AGENT',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -47,7 +54,17 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export default function BottomIsland() {
+const ROLE_LEVEL: Record<Role, number> = {
+  USER: 0,
+  AGENT: 1,
+  SUPER_ADMIN: 2,
+};
+
+function canSee(role: Role, minRole: Role): boolean {
+  return ROLE_LEVEL[role] >= ROLE_LEVEL[minRole];
+}
+
+export default function BottomIsland({ role }: { role: Role }) {
   const pathname = usePathname();
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -63,6 +80,8 @@ export default function BottomIsland() {
     router.refresh();
   }
 
+  const visibleItems = NAV_ITEMS.filter(item => canSee(role, item.minRole));
+
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
       <div
@@ -75,7 +94,7 @@ export default function BottomIsland() {
         onMouseLeave={() => setExpanded(false)}
       >
         <nav className="flex items-center gap-1">
-          {NAV_ITEMS.map(item => {
+          {visibleItems.map(item => {
             const active = isActive(item.href);
             return (
               <Link

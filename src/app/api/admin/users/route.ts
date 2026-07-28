@@ -10,11 +10,11 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAdmin, onlineThresholdMs } from '@/lib/auth';
+import { requireAgent, onlineThresholdMs } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 
 export async function GET(req: NextRequest) {
-  const claims = await requireAdmin(req);
+  const claims = await requireAgent(req);
   if (!claims) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const url = new URL(req.url);
@@ -33,6 +33,11 @@ export async function GET(req: NextRequest) {
   }
   if (onlineOnly) {
     where.lastSeenAt = { gt: onlineCutoff };
+  }
+
+  // AGENT 只能看到普通用户，不能看到其他 AGENT 或 SUPER_ADMIN（防止信息泄露）
+  if (claims.role === 'AGENT') {
+    where.role = 'USER';
   }
 
   const [total, users] = await Promise.all([

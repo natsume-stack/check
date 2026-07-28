@@ -6,14 +6,14 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAdmin } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const claims = await requireAdmin(req);
+  const claims = await requireSuperAdmin(req);
   if (!claims) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const program = await prisma.programConfig.findUnique({
@@ -34,7 +34,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const claims = await requireAdmin(req);
+  const claims = await requireSuperAdmin(req);
   if (!claims) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const body = (await req.json()) as PatchBody;
@@ -64,7 +64,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const claims = await requireAdmin(req);
+  const claims = await requireSuperAdmin(req);
   if (!claims) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   await prisma.programConfig.delete({ where: { id: params.id } });

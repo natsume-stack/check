@@ -9,7 +9,7 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAdmin } from '@/lib/auth';
+import { requireAgent, canManageUser } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 
 interface SuspendBody {
@@ -20,7 +20,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const claims = await requireAdmin(req);
+  const claims = await requireAgent(req);
   if (!claims) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const body = (await req.json()) as SuspendBody;
@@ -29,6 +29,18 @@ export async function POST(
   // 不允许暂停自己
   if (params.id === claims.sub) {
     return jsonResponse({ error: 'Cannot suspend self' }, 400);
+  }
+
+  // 越权防护：AGENT 不能暂停 AGENT 或 SUPER_ADMIN
+  const target = await prisma.user.findUnique({
+    where: { id: params.id },
+    select: { role: true, username: true },
+  });
+  if (!target) return jsonResponse({ error: 'Not found' }, 404);
+
+  const guard = canManageUser(claims, target.role);
+  if (!guard.ok) {
+    return jsonResponse({ error: guard.reason }, 403);
   }
 
   // 更新用户状态
@@ -57,7 +69,7 @@ export async function POST(
       actorId: claims.sub,
       action: 'user.suspend',
       target: params.id,
-      meta: { reason },
+      meta: { reason, targetUsername: target.username, targetRole: target.role },
     },
   });
 
