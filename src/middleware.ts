@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
+// ─── CSRF 防护 ─────────────────────────────────────
+const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function isCsrfValid(req: NextRequest): boolean {
+  if (!STATE_CHANGING_METHODS.has(req.method)) return true;
+  const xrw = req.headers.get('x-requested-with');
+  return xrw === 'XMLHttpRequest' || xrw === 'check-admin';
+}
+
 const PUBLIC_PATHS = ['/', '/login', '/register'];
 const PUBLIC_PREFIXES = [
   '/api/auth/login',
-  '/api/auth/register',
   '/api/auth/me',
   '/api/health', // 保活探针，公开访问
-  '/api/migrate', // 临时迁移接口，一次性密钥鉴权
   '/admin/pack', // Bearer token 鉴权，不走 cookie
 ];
 
@@ -85,6 +92,19 @@ function hasAccess(role: string | undefined, pathname: string): boolean {
   return false;
 }
 
+/** 安全响应头：防点击劫持、MIME 嗅探、降级攻击，启用 HSTS */
+function withSecurityHeaders(res: NextResponse): NextResponse {
+  res.headers.set('X-Content-Type-Options', 'nosniff');
+  res.headers.set('X-Frame-Options', 'DENY');
+  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.headers.set('X-XSS-Protection', '1; mode=block');
+  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isLokiBoxApi = LOKIBOX_API_PREFIXES.some(p => pathname.startsWith(p));
@@ -116,9 +136,9 @@ export async function middleware(req: NextRequest) {
   }
 
   // 公开路径放行
-  if (PUBLIC_PATHS.includes(pathname)) return NextResponse.next();
+  if (PUBLIC_PATHS.includes(pathname)) return withSecurityHeaders(NextResponse.next());
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) {
-    return NextResponse.next();
+    return withSecurityHeaders(NextResponse.next());
   }
   // 静态资源放行
   if (
@@ -169,7 +189,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/', req.url));
   }
 
-  return NextResponse.next();
+  // CSRF 防护：所有认证后的 state-changing 请求必须带 X-Requested-With 头
+  // 防止跨站请求伪造（浏览器同源策略会阻止跨域请求附带自定义头）
+  if (pathname.startsWith('/api/') && !isCsrfValid(req)) {
+    return NextResponse.json(
+      { error: 'CSRF check failed' },
+      { status: 403 }
+    );
+  }
+
+  return withSecurityHeaders(NextResponse.next());
 }
 
 export const config = {

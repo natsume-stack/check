@@ -119,7 +119,7 @@ export default function UsersClient({ initialUsers }: { initialUsers: User[] }) 
     try {
       const res = await fetch(`/api/admin/users/${id}/${action}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'check-admin' },
         body: body ? JSON.stringify(body) : undefined,
       });
       if (!res.ok) {

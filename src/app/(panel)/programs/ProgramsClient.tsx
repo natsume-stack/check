@@ -106,6 +106,7 @@ export default function ProgramsClient({
       xhr.onerror = () => reject(new Error('网络错误'));
       xhr.open('POST', '/api/admin/code-packages/upload');
       xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('X-Requested-With', 'check-admin');
       xhr.send(body);
     });
   }
