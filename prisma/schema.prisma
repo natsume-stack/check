@@ -293,8 +293,11 @@ model SystemConfig {
 model InvitationCode {
   id           String    @id @default(cuid())
   code         String    @unique // 邀请码（32 字符 base62）
+  targetType   String    @default("LOKI") // "LOKI" = LokiUser 客户端, "ADMIN" = AdminUser 后台
   maxUses      Int       @default(1) // 最大使用次数（1=单次使用）
   usedCount    Int       @default(0) // 已使用次数
+  usedById     String?   // 使用者 ID（AdminUser.id 或 LokiUser.id）
+  usedAt       DateTime? // 使用时间
   createdById  String?   // 创建者 AdminUser ID
   createdAt    DateTime  @default(now())
   expiresAt    DateTime? // 过期时间，null=永久
@@ -305,4 +308,5 @@ model InvitationCode {
 
   @@index([code])
   @@index([createdById])
+  @@index([targetType])
 }

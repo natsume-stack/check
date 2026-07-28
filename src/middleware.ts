@@ -14,6 +14,7 @@ const PUBLIC_PATHS = ['/', '/login', '/register'];
 const PUBLIC_PREFIXES = [
   '/api/auth/login',
   '/api/auth/me',
+  '/api/auth/register', // 内推注册（需要邀请码，但不需要登录）
   '/api/health', // 保活探针，公开访问
   '/admin/pack', // Bearer token 鉴权，不走 cookie
 ];

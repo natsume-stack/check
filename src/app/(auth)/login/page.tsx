@@ -1,15 +1,22 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registered, setRegistered] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('registered') === '1') {
+      setRegistered(true);
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,6 +54,12 @@ export default function LoginPage() {
           验证与管理控制台
         </p>
       </div>
+
+      {registered && (
+        <div className="mb-4 text-sm text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+          注册成功，请登录
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -93,11 +106,16 @@ export default function LoginPage() {
       </form>
 
       <p className="mt-6 text-center text-sm text-[var(--text-muted)]">
-        还没有账号？{' '}
-        <Link href="/register" className="font-semibold text-[var(--text)] underline underline-offset-4">
-          注册
-        </Link>
+        仅限邀请注册
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="glass rounded-[28px] p-10 shadow-2xl"><div className="text-center text-[var(--text-muted)]">加载中…</div></div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

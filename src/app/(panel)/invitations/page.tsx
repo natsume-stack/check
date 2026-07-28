@@ -15,7 +15,7 @@ export default async function InvitationsPage() {
   if (claims.role !== 'SUPER_ADMIN') redirect('/');
 
   const codes = await prisma.invitationCode.findMany({
-    orderBy: [{ createdAt: 'desc' }],
+    orderBy: [{ targetType: 'asc' }, { createdAt: 'desc' }],
     include: {
       createdBy: {
         select: { username: true },
@@ -26,8 +26,11 @@ export default async function InvitationsPage() {
   const serialized = codes.map(c => ({
     id: c.id,
     code: c.code,
+    targetType: c.targetType,
     maxUses: c.maxUses,
     usedCount: c.usedCount,
+    usedById: c.usedById,
+    usedAt: c.usedAt?.toISOString() ?? null,
     createdAt: c.createdAt.toISOString(),
     expiresAt: c.expiresAt?.toISOString() ?? null,
     disabledAt: c.disabledAt?.toISOString() ?? null,

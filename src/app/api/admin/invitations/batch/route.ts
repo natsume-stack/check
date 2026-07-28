@@ -2,17 +2,14 @@
  * POST /api/admin/invitations/batch — 批量创建邀请码（SUPER_ADMIN only）
  *
  * 请求体：
- *   { count: number, maxUses?: number, expiresInHours?: number }
+ *   { count: number, maxUses?: number, expiresInHours?: number, targetType?: 'LOKI' | 'ADMIN' }
  *   - count 必须 >= 1，上限 100（防止误操作产生过多记录）
  *   - maxUses 默认 1，必须 >= 1
+ *   - targetType 默认 'LOKI'，'ADMIN' 类型强制 maxUses = 1
  *   - expiresInHours 不传则永久有效（expiresAt = null）
  *
  * 返回：
- *   { codes: [{ id, code, maxUses, expiresAt }] }
- *
- * 使用 prisma.$transaction 保证批量写入的原子性，
- * 每个邀请码独立生成（crypto.randomBytes(24).toString('base64url')），
- * 失败则整体回滚。
+ *   { codes: [{ id, code, targetType, maxUses, expiresAt }] }
  */
 
 import { NextRequest } from 'next/server';
@@ -34,6 +31,7 @@ interface BatchBody {
   count?: number;
   maxUses?: number;
   expiresInHours?: number;
+  targetType?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -53,10 +51,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const maxUses =
+  const targetType = body.targetType === 'ADMIN' ? 'ADMIN' : 'LOKI';
+
+  let maxUses =
     Number.isFinite(body.maxUses) && (body.maxUses as number) >= 1
       ? Math.floor(body.maxUses as number)
       : 1;
+
+  // ADMIN 类型强制 maxUses = 1
+  if (targetType === 'ADMIN') {
+    maxUses = 1;
+  }
 
   let expiresAt: Date | null = null;
   if (
@@ -76,16 +81,17 @@ export async function POST(req: NextRequest) {
       prisma.invitationCode.create({
         data: {
           code: generateInvitationCode(),
+          targetType,
           maxUses,
           expiresAt,
           createdById: claims.sub,
         },
-        select: { id: true, code: true, maxUses: true, expiresAt: true },
+        select: { id: true, code: true, targetType: true, maxUses: true, expiresAt: true },
       })
     )
   );
 
-  // 审计日志：记录批量创建事件（target 取首个 code 作为代表，meta 记录全部 code）
+  // 审计日志
   await writeAuditLog({
     actorId: claims.sub,
     action: 'invitation.create',
@@ -95,6 +101,7 @@ export async function POST(req: NextRequest) {
       count: created.length,
       maxUses,
       expiresAt,
+      targetType,
       codes: created.map((c) => c.code),
     },
     req,

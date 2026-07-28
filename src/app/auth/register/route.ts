@@ -93,6 +93,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // 必须是 LOKI 类型
+  if (invite.targetType !== 'LOKI') {
+    return encryptedJsonResponse(
+      fail('INVALID_INVITATION', '邀请码类型错误'),
+      req
+    );
+  }
+
   // 检查邀请码状态
   if (invite.disabledAt) {
     return encryptedJsonResponse(
@@ -175,10 +183,14 @@ export async function POST(req: NextRequest) {
     data: { lastSeenAt: new Date() },
   });
 
-  // 增加邀请码使用次数
+  // 增加邀请码使用次数，记录使用者
   await prisma.invitationCode.update({
     where: { id: invite.id },
-    data: { usedCount: { increment: 1 } },
+    data: {
+      usedCount: { increment: 1 },
+      usedById: user.id,
+      usedAt: new Date(),
+    },
   });
 
   // 创建 Session 并绑定 JWT
