@@ -6,6 +6,7 @@ const PUBLIC_PREFIXES = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/me',
+  '/api/health', // 保活探针，公开访问
   '/admin/pack', // Bearer token 鉴权，不走 cookie
 ];
 
