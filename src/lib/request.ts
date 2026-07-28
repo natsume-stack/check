@@ -102,6 +102,8 @@ function corsHeaders(req: NextRequest): Record<string, string> {
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers':
         'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id',
+      // 关键：暴露 X-Iv 给 JavaScript，否则跨域时 resp.headers.get('X-Iv') 返回 null
+      'Access-Control-Expose-Headers': 'X-Iv, X-Session-Id',
       'Access-Control-Max-Age': '86400',
       Vary: 'Origin',
     };

@@ -46,17 +46,18 @@ export async function middleware(req: NextRequest) {
       const origin = getAllowedOrigin(req);
       if (origin) {
         return new NextResponse(null, {
-          status: 204,
-          headers: {
-            'Access-Control-Allow-Origin': origin,
-            'Access-Control-Allow-Credentials': 'true',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers':
-              'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id',
-            'Access-Control-Max-Age': '86400',
-            Vary: 'Origin',
-          },
-        });
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': origin,
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers':
+            'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id',
+          'Access-Control-Expose-Headers': 'X-Iv, X-Session-Id',
+          'Access-Control-Max-Age': '86400',
+          Vary: 'Origin',
+        },
+      });
       }
       return new NextResponse(null, { status: 204 });
     }
