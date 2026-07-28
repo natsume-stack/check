@@ -118,11 +118,11 @@ export async function encryptedJsonResponse(
   req: NextRequest
 ): Promise<NextResponse> {
   const sessionId = req.headers.get('X-Session-Id') ?? undefined;
-  const iv = req.headers.get('X-IV') ?? undefined;
   const cors = corsHeaders(req);
 
   // 优先用 sessionKey 加密响应
-  if (sessionId && iv) {
+  // 注意：不能依赖 X-IV 头判断是否有 session，因为 GET 请求无请求体时不会发送 X-IV
+  if (sessionId) {
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
     });
