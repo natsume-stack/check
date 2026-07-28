@@ -57,6 +57,7 @@ const AGENT_ONLY_PREFIXES = [
 
 const SUPER_ADMIN_ONLY_PREFIXES = [
   '/programs',
+  '/admin-users',
   '/api/admin/code-packages',
   '/api/admin/admin-users',
 ];
