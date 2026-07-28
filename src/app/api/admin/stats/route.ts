@@ -41,9 +41,9 @@ export async function GET(req: NextRequest) {
     recentHeartbeats,
     lastHeartbeat,
   ] = await Promise.all([
-    prisma.user.count(),
-    prisma.user.count({ where: { lastSeenAt: { gt: onlineCutoff } } }),
-    prisma.user.count({ where: { createdAt: { gt: todayStart } } }),
+    prisma.lokiUser.count(),
+    prisma.lokiUser.count({ where: { lastSeenAt: { gt: onlineCutoff } } }),
+    prisma.lokiUser.count({ where: { createdAt: { gt: todayStart } } }),
     prisma.loginRecord.count({
       where: { createdAt: { gt: todayStart }, success: true },
     }),

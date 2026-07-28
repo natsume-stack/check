@@ -1,5 +1,10 @@
 // Prisma schema for check system
 // Database: TiDB Serverless (MySQL 8.0 compatible)
+//
+// 双账户系统：
+//   - AdminUser：check 后台账户（admin/代理/普通后台用户）
+//   - LokiUser：LokiBox 客户端玩家账户
+// 两者彻底分离，防止越权与语义混淆
 
 generator client {
   provider = "prisma-client-js"
@@ -10,26 +15,57 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── 用户 ────────────────────────────────────────────
+// ─── 后台管理员账户（check 网站登录）────────────────
 
-model User {
+model AdminUser {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  passwordHash  String
+  nickname      String   @default("")
+  role          Role     @default(USER) // SUPER_ADMIN / AGENT / USER
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastSeenAt    DateTime?
+
+  // 安全字段：登录失败计数 + 锁定时间（防暴力破解）
+  failedLoginAttempts Int      @default(0)
+  lockedUntil         DateTime?
+
+  // 审计日志关联
+  auditLogs     AuditLog[]
+
+  @@index([username])
+}
+
+enum Role {
+  SUPER_ADMIN // 超级管理员：全量开放
+  AGENT       // 代理：可管理 LokiUser，不能看程序管理
+  USER        // 普通后台用户：只能看仪表盘
+}
+
+// ─── LokiBox 客户端玩家账户（加密链路登录）──────────
+
+model LokiUser {
   id            String   @id @default(cuid())
   username      String   @unique
   passwordHash  String
   nickname      String   @default("")
   avatarUrl     String?
-  role          Role     @default(USER)
   fingerprint   String?  // 最近一次登录的设备指纹（SHA-256 base64）
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   lastSeenAt    DateTime? // 最近心跳时间，用于在线判定
 
   // 账号状态控制（管理员可操作）
-  status        UserStatus @default(ACTIVE)
+  status        LokiUserStatus @default(ACTIVE)
   bannedAt      DateTime?
   bannedReason  String?
-  bannedById    String?   // 执行封禁的管理员 ID
+  bannedById    String?   // 执行封禁的 AdminUser ID
   expiresAt     DateTime? // 账号到期时间，null = 永久
+
+  // 安全字段：登录失败计数 + 锁定时间
+  failedLoginAttempts Int      @default(0)
+  lockedUntil         DateTime?
 
   sessions      Session[]
   loginRecords  LoginRecord[]
@@ -44,13 +80,7 @@ model User {
   @@index([status])
 }
 
-enum Role {
-  SUPER_ADMIN // 超级管理员：全量开放
-  AGENT       // 代理：可管理用户，不能看程序管理
-  USER        // 普通用户：只能看仪表盘
-}
-
-enum UserStatus {
+enum LokiUserStatus {
   ACTIVE    // 正常
   BANNED    // 已封禁
   EXPIRED   // 已到期
@@ -61,7 +91,7 @@ enum UserStatus {
 
 model Session {
   id           String   @id @default(cuid())
-  userId       String?  // 握手时未登录，登录后回填
+  userId       String?  // 握手时未登录，登录后回填（LokiUser.id）
   sessionKey   String   // base64(32 bytes) — AES-256 key 下发给客户端
   csrfNonce    String?
   createdAt    DateTime @default(now())
@@ -72,7 +102,7 @@ model Session {
   // 本次加载的代码包组合哈希（心跳校验完整性）
   codeHash     String?
 
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user LokiUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -100,10 +130,10 @@ model LoginRecord {
   userAgent     String?
   // 元数据
   success       Boolean
-  failureReason String?  // BANNED / EXPIRED / WRONG_PASSWORD / SUSPENDED
+  failureReason String?  // BANNED / EXPIRED / WRONG_PASSWORD / SUSPENDED / LOCKED
   createdAt     DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user LokiUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([ip])
@@ -121,7 +151,7 @@ model Heartbeat {
   codeHash     String?
   createdAt    DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user LokiUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, mapId])
   @@index([createdAt])
@@ -135,8 +165,8 @@ model Friend {
   otherId      String
   createdAt    DateTime @default(now())
 
-  user  User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
-  other User @relation("OtherFriends", fields: [otherId], references: [id], onDelete: Cascade)
+  user  LokiUser @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  other LokiUser @relation("OtherFriends", fields: [otherId], references: [id], onDelete: Cascade)
 
   @@unique([userId, otherId])
   @@index([userId])
@@ -149,8 +179,8 @@ model FriendRequest {
   toId         String
   createdAt    DateTime @default(now())
 
-  from User @relation("RequestFrom", fields: [fromId], references: [id], onDelete: Cascade)
-  to   User @relation("RequestTo", fields: [toId], references: [id], onDelete: Cascade)
+  from LokiUser @relation("RequestFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to   LokiUser @relation("RequestTo", fields: [toId], references: [id], onDelete: Cascade)
 
   @@unique([fromId, toId])
   @@index([toId])
@@ -181,16 +211,17 @@ model ProgramConfig {
 
 model CodePackage {
   id           String   @id @default(cuid())
-  // feature 标识，例如 "kill-aura", "esp", "fly"
+  // feature 标识，"lokibox-pack" 表示完整代码包
   featureId    String
-  // 版本号（语义化版本）
+  // 版本号（构建时间戳）
   version      String
   // 代码包（明文 JS 源码，LongText）
-  // 字段名保留 encryptedCode 以兼容客户端 schema，实际存储明文
   // 响应时由 encryptedJsonResponse 用 sessionKey 统一加密
   encryptedCode String  @db.LongText
   // 代码包哈希（SHA-256，用于完整性校验）
   codeHash     String
+  // HMAC 签名（防篡改，客户端可校验）
+  hmacSignature String
   // 代码包大小（字节，用于统计）
   sizeBytes    Int
   // 是否当前激活版本（同一 featureId 只有一个 active）
@@ -209,11 +240,13 @@ model CodePackage {
 
 model AuditLog {
   id           String   @id @default(cuid())
-  actorId      String?
-  action       String   // BAN / UNBAN / SUSPEND / SET_EXPIRY / UPLOAD_CODE / UPDATE_CONFIG
+  actorId      String?  // AdminUser.id
+  action       String   // BAN / UNBAN / SUSPEND / SET_EXPIRY / UPLOAD_CODE / UPDATE_CONFIG / CREATE_ADMIN / CHANGE_ROLE
   target       String?  // 目标用户 ID 或 featureId
   meta         Json?
   createdAt    DateTime @default(now())
+
+  actor AdminUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([actorId])
   @@index([createdAt])

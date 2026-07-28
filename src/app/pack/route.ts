@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
     select: {
       encryptedCode: true,
       codeHash: true,
+      hmacSignature: true,
       version: true,
     },
   });
@@ -86,6 +87,7 @@ export async function GET(req: NextRequest) {
     ok({
       code: pack.encryptedCode,
       hash: pack.codeHash,
+      hmac: pack.hmacSignature,
       version: pack.version,
     }),
     req

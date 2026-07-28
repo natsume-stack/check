@@ -7,7 +7,7 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAgent, canManageUser } from '@/lib/auth';
+import { requireAgent, canManageLokiUser } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 
 export async function POST(
@@ -17,20 +17,20 @@ export async function POST(
   const claims = await requireAgent(req);
   if (!claims) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-  // 越权防护：AGENT 不能解封 AGENT 或 SUPER_ADMIN
-  const target = await prisma.user.findUnique({
+  // 越权防护：USER 不能解封 LokiUser
+  const target = await prisma.lokiUser.findUnique({
     where: { id: params.id },
-    select: { role: true, username: true },
+    select: { username: true },
   });
   if (!target) return jsonResponse({ error: 'Not found' }, 404);
 
-  const guard = canManageUser(claims, target.role, { allowSelf: true });
+  const guard = canManageLokiUser(claims);
   if (!guard.ok) {
     return jsonResponse({ error: guard.reason }, 403);
   }
 
   // 恢复用户状态
-  await prisma.user.update({
+  await prisma.lokiUser.update({
     where: { id: params.id },
     data: {
       status: 'ACTIVE',
@@ -46,7 +46,7 @@ export async function POST(
       actorId: claims.sub,
       action: 'user.unban',
       target: params.id,
-      meta: { targetUsername: target.username, targetRole: target.role },
+      meta: { targetUsername: target.username },
     },
   });
 

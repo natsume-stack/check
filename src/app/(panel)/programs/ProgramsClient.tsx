@@ -1,330 +1,511 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
-interface Program {
+interface Pkg {
   id: string;
-  programId: string;
   featureId: string;
-  config: unknown;
-  enforced: boolean;
-  disabled: boolean;
+  version: string;
+  codeHash: string;
+  hmacSignature: string;
+  sizeBytes: number;
+  isActive: boolean;
+  builtAt: string;
   createdAt: string;
   updatedAt: string;
 }
 
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function shortHash(hash: string, head = 12, tail = 8) {
+  if (!hash) return '—';
+  if (hash.length <= head + tail) return hash;
+  return `${hash.slice(0, head)}…${hash.slice(-tail)}`;
+}
+
+function makeVersion() {
+  return new Date().toISOString();
+}
+
 export default function ProgramsClient({
-  initialPrograms,
+  initialPackages,
 }: {
-  initialPrograms: Program[];
+  initialPackages: Pkg[];
 }) {
-  const [programs, setPrograms] = useState<Program[]>(initialPrograms);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Program | null>(null);
-  const [programId, setProgramId] = useState('lokibox');
-  const [featureId, setFeatureId] = useState('');
-  const [config, setConfig] = useState('{}');
-  const [enforced, setEnforced] = useState(false);
-  const [disabled, setDisabled] = useState(false);
+  const [packages, setPackages] = useState<Pkg[]>(initialPackages);
+  const [featureId, setFeatureId] = useState('lokibox-pack');
+  const [version, setVersion] = useState(makeVersion);
+  const [code, setCode] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [mode, setMode] = useState<'file' | 'paste'>('file');
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [copied, setCopied] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function resetForm() {
-    setEditing(null);
-    setProgramId('lokibox');
-    setFeatureId('');
-    setConfig('{}');
-    setEnforced(false);
-    setDisabled(false);
-    setError('');
+  const activePackages = packages.filter(p => p.isActive);
+
+  async function copyText(text: string, key: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(''), 1500);
+    } catch {
+      /* ignore */
+    }
   }
 
-  function startEdit(p: Program) {
-    setEditing(p);
-    setProgramId(p.programId);
-    setFeatureId(p.featureId);
-    setConfig(JSON.stringify(p.config, null, 2));
-    setEnforced(p.enforced);
-    setDisabled(p.disabled);
-    setShowForm(true);
-    setError('');
+  async function refreshList() {
+    setRefreshing(true);
+    try {
+      const resp = await fetch('/api/admin/code-packages', { cache: 'no-store' });
+      const data = await resp.json();
+      if (resp.ok && Array.isArray(data.packages)) {
+        setPackages(data.packages);
+      }
+    } catch {
+      /* ignore refresh errors */
+    } finally {
+      setRefreshing(false);
+    }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    const text = await file.text();
+    setCode(text);
+  }
+
+  function uploadViaXhr(body: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = ev => {
+        if (ev.lengthComputable) {
+          setProgress(Math.round((ev.loaded / ev.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        let data: any = null;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch {
+          /* ignore */
+        }
+        if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+        else reject(new Error(data?.error || `上传失败 (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error('网络错误'));
+      xhr.open('POST', '/api/admin/code-packages/upload');
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(body);
+    });
+  }
+
+  async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-
-    let parsedConfig: unknown;
-    try {
-      parsedConfig = JSON.parse(config);
-    } catch {
-      setError('Config JSON 解析失败');
+    setSuccess('');
+    if (!featureId.trim()) {
+      setError('请填写 Feature ID');
       return;
     }
-
-    setLoading(true);
+    if (!version.trim()) {
+      setError('请填写版本号');
+      return;
+    }
+    if (!code) {
+      setError(mode === 'file' ? '请选择代码文件' : '请粘贴代码内容');
+      return;
+    }
+    setUploading(true);
+    setProgress(0);
     try {
-      const resp = await fetch('/api/admin/programs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          programId,
-          featureId,
-          config: parsedConfig,
-          enforced,
-          disabled,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setError(data.error || 'Save failed');
-        return;
-      }
-
-      // 更新列表
-      const newProgram = data.program as Program;
-      const newProgramSerialized: Program = {
-        ...newProgram,
-        createdAt: new Date(newProgram.createdAt).toISOString(),
-        updatedAt: new Date(newProgram.updatedAt).toISOString(),
-      };
-      setPrograms(prev => {
-        const idx = prev.findIndex(
-          p => p.programId === newProgram.programId && p.featureId === newProgram.featureId
-        );
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = newProgramSerialized;
-          return copy;
-        }
-        return [newProgramSerialized, ...prev];
-      });
-
-      setShowForm(false);
-      resetForm();
-    } catch {
-      setError('Network error');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('确认删除此配置？')) return;
-    const resp = await fetch(`/api/admin/programs/${id}`, { method: 'DELETE' });
-    if (resp.ok) {
-      setPrograms(prev => prev.filter(p => p.id !== id));
-    }
-  }
-
-  async function toggleField(p: Program, field: 'enforced' | 'disabled') {
-    const newValue = !p[field];
-    const resp = await fetch(`/api/admin/programs/${p.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [field]: newValue }),
-    });
-    if (resp.ok) {
-      setPrograms(prev =>
-        prev.map(x => (x.id === p.id ? { ...x, [field]: newValue } : x))
+      const data = await uploadViaXhr(
+        JSON.stringify({
+          featureId: featureId.trim(),
+          version: version.trim(),
+          code,
+        })
       );
+      setSuccess(
+        `上传成功 · v${data.version} · ${formatSize(data.sizeBytes)} · ${shortHash(data.codeHash)}`
+      );
+      setCode('');
+      setFileName('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setVersion(makeVersion());
+      await refreshList();
+    } catch (err: any) {
+      setError(err.message || '上传失败');
+    } finally {
+      setUploading(false);
+      setProgress(0);
     }
+  }
+
+  async function handleDelete(p: Pkg) {
+    if (!confirm(`确认删除 ${p.featureId} @ ${p.version}？此操作不可恢复。`)) return;
+    setError('');
+    try {
+      const resp = await fetch(`/api/admin/code-packages/${p.id}`, {
+        method: 'DELETE',
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || '删除失败');
+      }
+      setPackages(prev => prev.filter(x => x.id !== p.id));
+    } catch (err: any) {
+      setError(err.message || '删除失败');
+    }
+  }
+
+  function resetForm() {
+    setCode('');
+    setFileName('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setVersion(makeVersion());
+    setError('');
+    setSuccess('');
   }
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">LokiBox 程序管理</h1>
+          <h1 className="text-3xl font-bold tracking-tight">代码包下发管理</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">
-            远程配置 LokiBox 各 feature 参数 / 强制启用 / 远程禁用
+            上传 / 管理 LokiBox 客户端代码包，支持版本回滚与完整性校验
           </p>
         </div>
         <button
-          onClick={() => {
-            resetForm();
-            setShowForm(true);
-          }}
-          className="h-11 px-5 rounded-2xl bg-[var(--brand)] text-[var(--bg)] font-bold hover:opacity-90 transition"
+          onClick={refreshList}
+          disabled={refreshing}
+          className="h-10 px-4 rounded-xl glass font-semibold text-sm hover:opacity-80 transition disabled:opacity-50"
         >
-          + 新建配置
+          {refreshing ? '刷新中…' : '↻ 刷新'}
         </button>
       </div>
 
-      {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-4"
-        >
-          <h2 className="font-bold text-lg">{editing ? '编辑配置' : '新建配置'}</h2>
+      {/* Messages */}
+      {error && (
+        <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="text-sm text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+          {success}
+        </div>
+      )}
 
-          <div className="grid grid-cols-2 gap-4">
+      {/* Active versions */}
+      <section>
+        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
+          当前激活版本
+        </h2>
+        {activePackages.length === 0 ? (
+          <div className="rounded-2xl glass p-8 text-center text-sm text-[var(--text-muted)]">
+            尚无激活的代码包，请上传第一个版本
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {activePackages.map(p => (
+              <div key={p.id} className="rounded-2xl glass p-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-500 rounded-bl-xl">
+                  Active
+                </div>
+                <div className="flex items-center gap-2 mb-4 flex-wrap">
+                  <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-[var(--surface-2)]">
+                    {p.featureId}
+                  </span>
+                  <span className="font-mono text-lg font-bold break-all">
+                    {p.version}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <div className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                      大小
+                    </div>
+                    <div className="font-mono">{formatSize(p.sizeBytes)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                      上传时间
+                    </div>
+                    <div className="font-mono text-xs">
+                      {new Date(p.createdAt).toLocaleString('zh-CN')}
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                      SHA-256 Hash
+                    </div>
+                    <button
+                      onClick={() => copyText(p.codeHash, `hash-${p.id}`)}
+                      className="font-mono text-xs break-all text-left hover:text-[var(--brand)] transition"
+                      title={p.codeHash}
+                    >
+                      {p.codeHash}{' '}
+                      <span className="text-[var(--text-muted)]">
+                        {copied === `hash-${p.id}` ? '✓ 已复制' : '⧉'}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="col-span-2 md:col-span-4">
+                    <div className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                      HMAC 签名
+                    </div>
+                    <button
+                      onClick={() => copyText(p.hmacSignature, `hmac-${p.id}`)}
+                      className="font-mono text-xs break-all text-left hover:text-[var(--brand)] transition"
+                      title={p.hmacSignature}
+                    >
+                      {p.hmacSignature}{' '}
+                      <span className="text-[var(--text-muted)]">
+                        {copied === `hmac-${p.id}` ? '✓ 已复制' : '⧉'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Upload */}
+      <section>
+        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
+          上传新版本
+        </h2>
+        <form
+          onSubmit={handleUpload}
+          className="rounded-2xl glass p-6 space-y-4"
+        >
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMode('file')}
+              className={`h-9 px-4 rounded-lg text-sm font-semibold transition ${
+                mode === 'file'
+                  ? 'bg-[var(--brand)] text-[var(--bg)]'
+                  : 'bg-[var(--surface-2)] text-[var(--text-muted)]'
+              }`}
+            >
+              选择文件
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('paste')}
+              className={`h-9 px-4 rounded-lg text-sm font-semibold transition ${
+                mode === 'paste'
+                  ? 'bg-[var(--brand)] text-[var(--bg)]'
+                  : 'bg-[var(--surface-2)] text-[var(--text-muted)]'
+              }`}
+            >
+              粘贴代码
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-2 uppercase tracking-wider">
-                程序 ID
-              </label>
-              <input
-                type="text"
-                value={programId}
-                onChange={e => setProgramId(e.target.value)}
-                className="w-full h-11 px-4 rounded-xl bg-[var(--bg)] border border-[var(--border)] focus:outline-none focus:border-[var(--brand)] transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-2 uppercase tracking-wider">
+              <label className="block text-[10px] font-semibold text-[var(--text-muted)] mb-2 uppercase tracking-wider">
                 Feature ID
               </label>
               <input
                 type="text"
                 value={featureId}
                 onChange={e => setFeatureId(e.target.value)}
-                placeholder="kill-aura 或 *"
+                placeholder="lokibox-pack"
                 className="w-full h-11 px-4 rounded-xl bg-[var(--bg)] border border-[var(--border)] focus:outline-none focus:border-[var(--brand)] transition"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-[var(--text-muted)] mb-2 uppercase tracking-wider">
+                版本号
+              </label>
+              <input
+                type="text"
+                value={version}
+                onChange={e => setVersion(e.target.value)}
+                className="w-full h-11 px-4 rounded-xl bg-[var(--bg)] border border-[var(--border)] font-mono text-sm focus:outline-none focus:border-[var(--brand)] transition"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-2 uppercase tracking-wider">
-              配置 JSON
-            </label>
-            <textarea
-              value={config}
-              onChange={e => setConfig(e.target.value)}
-              rows={8}
-              className="w-full p-4 rounded-xl bg-[var(--bg)] border border-[var(--border)] font-mono text-sm focus:outline-none focus:border-[var(--brand)] transition"
-            />
-          </div>
-
-          <div className="flex gap-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={enforced}
-                onChange={e => setEnforced(e.target.checked)}
-                className="w-4 h-4"
+          {mode === 'file' ? (
+            <div>
+              <label className="block text-[10px] font-semibold text-[var(--text-muted)] mb-2 uppercase tracking-wider">
+                代码文件
+              </label>
+              <div className="flex items-center gap-3 flex-wrap">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".js,.mjs,.ts,.txt"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-11 px-5 rounded-xl bg-[var(--surface-2)] font-semibold text-sm hover:opacity-80 transition"
+                >
+                  选择文件…
+                </button>
+                <span className="text-sm text-[var(--text-muted)] font-mono truncate">
+                  {fileName || '未选择文件'}
+                </span>
+                {code && (
+                  <span className="text-xs text-[var(--text-muted)] ml-auto">
+                    {formatSize(new Blob([code]).size)} · {code.length} 字符
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-[10px] font-semibold text-[var(--text-muted)] mb-2 uppercase tracking-wider">
+                代码内容
+              </label>
+              <textarea
+                value={code}
+                onChange={e => setCode(e.target.value)}
+                rows={8}
+                placeholder="// 粘贴代码内容…"
+                className="w-full p-4 rounded-xl bg-[var(--bg)] border border-[var(--border)] font-mono text-sm focus:outline-none focus:border-[var(--brand)] transition"
               />
-              <span className="text-sm font-semibold">强制启用</span>
-              <span className="text-xs text-[var(--text-muted)]">（客户端无法关闭）</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={disabled}
-                onChange={e => setDisabled(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <span className="text-sm font-semibold">禁用</span>
-              <span className="text-xs text-[var(--text-muted)]">（客户端无法开启）</span>
-            </label>
-          </div>
+              {code && (
+                <div className="text-xs text-[var(--text-muted)] mt-1">
+                  {formatSize(new Blob([code]).size)} · {code.length} 字符
+                </div>
+              )}
+            </div>
+          )}
 
-          {error && (
-            <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-              {error}
+          {uploading && (
+            <div className="space-y-1">
+              <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
+                <div
+                  className="h-full bg-[var(--brand)] transition-all duration-150"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className="text-xs text-[var(--text-muted)] font-mono">
+                上传中 {progress}%
+              </div>
             </div>
           )}
 
           <div className="flex gap-3">
             <button
               type="submit"
-              disabled={loading}
-              className="h-11 px-6 rounded-2xl bg-[var(--brand)] text-[var(--bg)] font-bold disabled:opacity-50 hover:opacity-90 transition"
+              disabled={uploading}
+              className="h-11 px-6 rounded-xl bg-[var(--brand)] text-[var(--bg)] font-bold disabled:opacity-50 hover:opacity-90 transition"
             >
-              {loading ? '保存中…' : '保存'}
+              {uploading ? '上传中…' : '↑ 上传代码包'}
             </button>
             <button
               type="button"
-              onClick={() => {
-                setShowForm(false);
-                resetForm();
-              }}
-              className="h-11 px-6 rounded-2xl bg-[var(--surface-2)] font-semibold hover:opacity-80 transition"
+              onClick={resetForm}
+              disabled={uploading}
+              className="h-11 px-6 rounded-xl bg-[var(--surface-2)] font-semibold hover:opacity-80 transition disabled:opacity-50"
             >
-              取消
+              重置
             </button>
           </div>
         </form>
-      )}
+      </section>
 
-      {/* 配置列表 */}
-      {programs.length === 0 ? (
-        <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-12 text-center">
-          <div className="text-[var(--text-muted)]">暂无程序配置</div>
-          <div className="text-xs text-[var(--text-muted)] mt-2">
-            点击「新建配置」开始
+      {/* History */}
+      <section>
+        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
+          历史版本 ({packages.length})
+        </h2>
+        {packages.length === 0 ? (
+          <div className="rounded-2xl glass p-8 text-center text-sm text-[var(--text-muted)]">
+            暂无代码包
           </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {programs.map(p => (
-            <div
-              key={p.id}
-              className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 flex items-start justify-between gap-4"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-[var(--surface-2)]">
-                    {p.programId}
-                  </span>
-                  <span className="font-mono text-sm font-semibold">/{p.featureId}</span>
-                  {p.enforced && (
-                    <span className="text-xs px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-600 font-semibold">
-                      强制
-                    </span>
-                  )}
-                  {p.disabled && (
-                    <span className="text-xs px-2 py-0.5 rounded-md bg-red-500/10 text-red-600 font-semibold">
-                      禁用
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-[var(--text-muted)] font-mono">
-                  {JSON.stringify(p.config).slice(0, 200)}
-                  {JSON.stringify(p.config).length > 200 ? '…' : ''}
-                </div>
-                <div className="text-xs text-[var(--text-muted)] mt-2">
-                  更新于 {new Date(p.updatedAt).toLocaleString('zh-CN')}
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 flex-shrink-0">
-                <button
-                  onClick={() => toggleField(p, 'enforced')}
-                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition ${
-                    p.enforced
-                      ? 'bg-orange-500/20 text-orange-600'
-                      : 'bg-[var(--surface-2)] text-[var(--text-muted)]'
-                  }`}
-                >
-                  强制
-                </button>
-                <button
-                  onClick={() => toggleField(p, 'disabled')}
-                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition ${
-                    p.disabled
-                      ? 'bg-red-500/20 text-red-600'
-                      : 'bg-[var(--surface-2)] text-[var(--text-muted)]'
-                  }`}
-                >
-                  禁用
-                </button>
-                <button
-                  onClick={() => startEdit(p)}
-                  className="text-xs px-3 py-1.5 rounded-lg font-semibold bg-[var(--surface-2)] text-[var(--text)] hover:opacity-80 transition"
-                >
-                  编辑
-                </button>
-                <button
-                  onClick={() => handleDelete(p.id)}
-                  className="text-xs px-3 py-1.5 rounded-lg font-semibold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition"
-                >
-                  删除
-                </button>
-              </div>
+        ) : (
+          <div className="rounded-2xl glass overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[720px]">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                    <th className="text-left px-4 py-3">Feature</th>
+                    <th className="text-left px-4 py-3">版本</th>
+                    <th className="text-left px-4 py-3">大小</th>
+                    <th className="text-left px-4 py-3">Hash</th>
+                    <th className="text-left px-4 py-3">上传时间</th>
+                    <th className="text-left px-4 py-3">状态</th>
+                    <th className="text-right px-4 py-3">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {packages.map(p => (
+                    <tr
+                      key={p.id}
+                      className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface)]/40 transition"
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-[var(--surface-2)]">
+                          {p.featureId}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs break-all">
+                        {p.version}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">
+                        {formatSize(p.sizeBytes)}
+                      </td>
+                      <td
+                        className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]"
+                        title={p.codeHash}
+                      >
+                        {shortHash(p.codeHash)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
+                        {new Date(p.createdAt).toLocaleString('zh-CN')}
+                      </td>
+                      <td className="px-4 py-3">
+                        {p.isActive ? (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-500">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[var(--text-muted)]">
+                            Inactive
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => handleDelete(p)}
+                          className="text-xs px-3 py-1.5 rounded-lg font-semibold bg-red-500/10 text-red-500 hover:bg-red-500/20 transition"
+                        >
+                          删除
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

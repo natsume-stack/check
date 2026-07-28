@@ -1,7 +1,8 @@
 /**
- * Next.js instrumentation hook — 启动时自动 seed admin 账号
+ * Next.js instrumentation hook — 启动时自动 seed admin 账号（AdminUser 表）
  *
- * 同时处理旧 ADMIN 角色到新 SUPER_ADMIN 角色的迁移（idempotent）。
+ * 仅在 Node.js runtime 执行，避免在 edge runtime 报错。
+ * Vercel Serverless 冷启动时触发，幂等。
  */
 
 export async function register() {
@@ -11,33 +12,16 @@ export async function register() {
 
     const prisma = new PrismaClient();
     try {
-      // ── 1. 迁移旧 ADMIN 用户为 SUPER_ADMIN（兼容性）──
-      // 用 raw SQL，因为 Prisma 客户端可能不再识别 'ADMIN' 字面量
-      try {
-        const result = await prisma.$executeRawUnsafe(
-          "UPDATE `User` SET `role` = 'SUPER_ADMIN' WHERE `role` = 'ADMIN'"
-        );
-        if (result > 0) {
-          console.log(
-            `[instrumentation] migrated ${result} legacy ADMIN user(s) to SUPER_ADMIN`
-          );
-        }
-      } catch (e) {
-        // 如果 schema 中已无 ADMIN 枚举值，或表为空，此查询可能失败 — 安全跳过
-        console.warn('[instrumentation] legacy ADMIN migration skipped:', (e as Error).message);
-      }
-
-      // ── 2. Seed admin 账号 ──
       const adminUsername = process.env.SEED_ADMIN_USERNAME ?? 'admin';
       const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'cyccodemao1234';
 
-      const existing = await prisma.user.findUnique({
+      const existing = await prisma.adminUser.findUnique({
         where: { username: adminUsername },
       });
 
       if (!existing) {
         const passwordHash = await bcrypt.hash(adminPassword, 12);
-        await prisma.user.create({
+        await prisma.adminUser.create({
           data: {
             username: adminUsername,
             passwordHash,
@@ -45,16 +29,13 @@ export async function register() {
             nickname: 'Administrator',
           },
         });
-        console.log(`[instrumentation] admin user "${adminUsername}" seeded (SUPER_ADMIN)`);
+        console.log(`[instrumentation] admin "${adminUsername}" seeded (SUPER_ADMIN)`);
       } else if (existing.role !== 'SUPER_ADMIN') {
-        // 已存在但不是 SUPER_ADMIN，升级（防止迁移逻辑漏掉）
-        await prisma.user.update({
+        await prisma.adminUser.update({
           where: { id: existing.id },
           data: { role: 'SUPER_ADMIN' },
         });
-        console.log(
-          `[instrumentation] admin user "${adminUsername}" upgraded to SUPER_ADMIN (was ${existing.role})`
-        );
+        console.log(`[instrumentation] admin "${adminUsername}" upgraded to SUPER_ADMIN`);
       }
     } catch (e) {
       console.error('[instrumentation] seed failed:', e);

@@ -8,7 +8,7 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAgent, canManageUser } from '@/lib/auth';
+import { requireAgent, canManageLokiUser } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 
 interface ExpiryBody {
@@ -29,19 +29,19 @@ export async function POST(
     return jsonResponse({ error: 'Invalid expiresAt format' }, 400);
   }
 
-  // 越权防护：AGENT 不能修改 AGENT 或 SUPER_ADMIN 的到期时间
-  const target = await prisma.user.findUnique({
+  // 越权防护：USER 不能修改 LokiUser 的到期时间
+  const target = await prisma.lokiUser.findUnique({
     where: { id: params.id },
-    select: { role: true, username: true },
+    select: { username: true },
   });
   if (!target) return jsonResponse({ error: 'Not found' }, 404);
 
-  const guard = canManageUser(claims, target.role, { allowSelf: true });
+  const guard = canManageLokiUser(claims);
   if (!guard.ok) {
     return jsonResponse({ error: guard.reason }, 403);
   }
 
-  await prisma.user.update({
+  await prisma.lokiUser.update({
     where: { id: params.id },
     data: { expiresAt },
   });
@@ -55,7 +55,6 @@ export async function POST(
       meta: {
         expiresAt: expiresAt?.toISOString() ?? null,
         targetUsername: target.username,
-        targetRole: target.role,
       },
     },
   });

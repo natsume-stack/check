@@ -15,17 +15,20 @@ export default async function UsersPage() {
   // USER 角色无权访问用户管理
   if (claims.role === 'USER') redirect('/');
 
-  const users = await prisma.user.findMany({
+  const users = await prisma.lokiUser.findMany({
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       username: true,
       nickname: true,
-      role: true,
       avatarUrl: true,
       fingerprint: true,
       createdAt: true,
       lastSeenAt: true,
+      status: true,
+      bannedAt: true,
+      bannedReason: true,
+      expiresAt: true,
       loginRecords: {
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -51,6 +54,8 @@ export default async function UsersPage() {
     ...u,
     createdAt: u.createdAt.toISOString(),
     lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
+    bannedAt: u.bannedAt?.toISOString() ?? null,
+    expiresAt: u.expiresAt?.toISOString() ?? null,
     lastLogin: u.loginRecords[0]
       ? {
           ...u.loginRecords[0],

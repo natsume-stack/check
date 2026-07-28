@@ -144,13 +144,25 @@ function getJwtSecret(): Uint8Array {
 
 export type Role = 'SUPER_ADMIN' | 'AGENT' | 'USER';
 
-export interface JwtClaims {
-  sub: string;   // user id
+/** 后台管理员 JWT claims（登录 check 后台） */
+export interface AdminJwtClaims {
+  sub: string;        // AdminUser.id
   username: string;
   role: Role;
+  type: 'admin';      // 区分 token 类型
 }
 
-export async function signJwt(claims: JwtClaims): Promise<string> {
+/** LokiBox 客户端 JWT claims（加密链路登录） */
+export interface LokiJwtClaims {
+  sub: string;        // LokiUser.id
+  username: string;
+  type: 'loki';       // 区分 token 类型
+}
+
+/** 兼容旧代码的联合类型 */
+export type JwtClaims = AdminJwtClaims | LokiJwtClaims;
+
+export async function signJwt(claims: AdminJwtClaims | LokiJwtClaims): Promise<string> {
   return new SignJWT({ ...claims })
     .setProtectedHeader({ alg: JWT_ALG })
     .setIssuedAt()
@@ -163,10 +175,19 @@ export async function verifyJwt(token: string): Promise<JwtClaims | null> {
     const { payload } = await jwtVerify(token, getJwtSecret(), {
       algorithms: [JWT_ALG],
     });
+    const type = payload.type as 'admin' | 'loki';
+    if (type === 'loki') {
+      return {
+        sub: payload.sub as string,
+        username: payload.username as string,
+        type: 'loki',
+      };
+    }
     return {
       sub: payload.sub as string,
       username: payload.username as string,
       role: payload.role as Role,
+      type: 'admin',
     };
   } catch {
     return null;

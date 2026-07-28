@@ -35,14 +35,9 @@ export async function GET(req: NextRequest) {
     where.lastSeenAt = { gt: onlineCutoff };
   }
 
-  // AGENT 只能看到普通用户，不能看到其他 AGENT 或 SUPER_ADMIN（防止信息泄露）
-  if (claims.role === 'AGENT') {
-    where.role = 'USER';
-  }
-
   const [total, users] = await Promise.all([
-    prisma.user.count({ where }),
-    prisma.user.findMany({
+    prisma.lokiUser.count({ where }),
+    prisma.lokiUser.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -51,7 +46,6 @@ export async function GET(req: NextRequest) {
         id: true,
         username: true,
         nickname: true,
-        role: true,
         avatarUrl: true,
         fingerprint: true,
         createdAt: true,
@@ -87,7 +81,6 @@ export async function GET(req: NextRequest) {
       id: u.id,
       username: u.username,
       nickname: u.nickname,
-      role: u.role,
       avatarUrl: u.avatarUrl,
       fingerprint: u.fingerprint,
       online,

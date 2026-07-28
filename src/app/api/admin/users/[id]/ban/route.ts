@@ -9,7 +9,7 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAgent, canManageUser } from '@/lib/auth';
+import { requireAgent, canManageLokiUser } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 
 interface BanBody {
@@ -26,25 +26,21 @@ export async function POST(
   const body = (await req.json()) as BanBody;
   const reason = body.reason?.trim() || '账号已被封禁';
 
-  // 不允许封禁自己
-  if (params.id === claims.sub) {
-    return jsonResponse({ error: 'Cannot ban self' }, 400);
-  }
-
-  // 越权防护：AGENT 不能封禁 AGENT 或 SUPER_ADMIN
-  const target = await prisma.user.findUnique({
+  // admin 不在 LokiUser 表里，无需 self 检查
+  // 越权防护：USER 不能操作 LokiUser
+  const target = await prisma.lokiUser.findUnique({
     where: { id: params.id },
-    select: { role: true, username: true },
+    select: { username: true },
   });
   if (!target) return jsonResponse({ error: 'Not found' }, 404);
 
-  const guard = canManageUser(claims, target.role);
+  const guard = canManageLokiUser(claims);
   if (!guard.ok) {
     return jsonResponse({ error: guard.reason }, 403);
   }
 
   // 更新用户状态
-  await prisma.user.update({
+  await prisma.lokiUser.update({
     where: { id: params.id },
     data: {
       status: 'BANNED',
@@ -72,7 +68,7 @@ export async function POST(
       actorId: claims.sub,
       action: 'user.ban',
       target: params.id,
-      meta: { reason, targetUsername: target.username, targetRole: target.role },
+      meta: { reason, targetUsername: target.username },
     },
   });
 

@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     return encryptedJsonResponse(fail('VALIDATION_ERROR', 'target_username required'), req);
   }
 
-  const target = await prisma.user.findUnique({
+  const target = await prisma.lokiUser.findUnique({
     where: { username: targetUsername },
   });
   if (!target) {

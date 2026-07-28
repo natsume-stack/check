@@ -9,7 +9,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { requireSuperAdmin } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
@@ -36,6 +36,10 @@ export async function POST(req: NextRequest) {
   // 计算代码包哈希（SHA-256 hex）和大小
   const codeHash = createHash('sha256').update(code, 'utf8').digest('hex');
   const sizeBytes = Buffer.byteLength(code, 'utf8');
+  // 计算 HMAC 签名（防篡改，客户端可校验）
+  const hmacSignature = createHmac('sha256', process.env.HMAC_SECRET ?? 'default-hmac-secret-change-me')
+    .update(code, 'utf8')
+    .digest('hex');
 
   // 将同 featureId 的旧版本设为 inactive
   await prisma.codePackage.updateMany({
@@ -50,6 +54,7 @@ export async function POST(req: NextRequest) {
       version,
       encryptedCode: code,
       codeHash,
+      hmacSignature,
       sizeBytes,
       isActive: true,
     },
@@ -70,6 +75,7 @@ export async function POST(req: NextRequest) {
     featureId: pkg.featureId,
     version: pkg.version,
     codeHash: pkg.codeHash,
+    hmacSignature: pkg.hmacSignature,
     sizeBytes: pkg.sizeBytes,
   });
 }

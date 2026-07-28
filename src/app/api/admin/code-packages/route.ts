@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       featureId: true,
       version: true,
       codeHash: true,
+      hmacSignature: true,
       sizeBytes: true,
       isActive: true,
       builtAt: true,

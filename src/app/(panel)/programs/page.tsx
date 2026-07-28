@@ -12,20 +12,32 @@ export default async function ProgramsPage() {
   const req = { headers: h } as any;
   const claims = await getAdminClaims(req);
   if (!claims) redirect('/login');
-  // 仅超级管理员可访问程序管理
+  // 仅超级管理员可访问代码包下发管理
   if (claims.role !== 'SUPER_ADMIN') redirect('/');
 
-  const programs = await prisma.programConfig.findMany({
-    orderBy: [{ programId: 'asc' }, { featureId: 'asc' }],
+  const packages = await prisma.codePackage.findMany({
+    orderBy: [{ featureId: 'asc' }, { createdAt: 'desc' }],
+    select: {
+      id: true,
+      featureId: true,
+      version: true,
+      codeHash: true,
+      hmacSignature: true,
+      sizeBytes: true,
+      isActive: true,
+      builtAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
-  // 序列化 Date/BigInt
-  const serialized = programs.map(p => ({
+  // 序列化 Date
+  const serialized = packages.map(p => ({
     ...p,
-    config: p.config as unknown,
+    builtAt: p.builtAt.toISOString(),
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   }));
 
-  return <ProgramsClient initialPrograms={serialized} />;
+  return <ProgramsClient initialPackages={serialized} />;
 }

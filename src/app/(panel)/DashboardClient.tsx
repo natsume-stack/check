@@ -12,6 +12,22 @@ interface Stats {
   mapActivity: { mapId: string; count: number }[];
   hourlyHeartbeats: number[];
   lastHeartbeatAt: string | null;
+  recentLogins: {
+    ip: string;
+    country: string | null;
+    region: string | null;
+    city: string | null;
+    createdAt: string;
+    username: string;
+    nickname: string;
+  }[];
+  activeCodePackage: {
+    featureId: string;
+    version: string;
+    codeHash: string;
+    sizeBytes: number;
+    builtAt: string;
+  } | null;
 }
 
 function timeAgo(iso: string | null): string {
@@ -21,6 +37,12 @@ function timeAgo(iso: string | null): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
   return `${Math.floor(diff / 86_400_000)} 天前`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 function StatCard({
@@ -120,6 +142,59 @@ export default function DashboardClient({ stats }: { stats: Stats }) {
         />
       </div>
 
+      {/* 当前代码包版本 */}
+      {stats.activeCodePackage && (
+        <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-bold tracking-tight">当前代码包版本</h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                客户端下发的激活版本
+              </p>
+            </div>
+            <span className="text-xs px-2 py-1 rounded-md bg-green-500/10 text-green-600 font-semibold">
+              Active
+            </span>
+          </div>
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+            <div>
+              <dt className="text-xs text-[var(--text-muted)]">Feature</dt>
+              <dd className="font-mono truncate">
+                {stats.activeCodePackage.featureId}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--text-muted)]">版本号</dt>
+              <dd className="font-mono truncate">
+                {stats.activeCodePackage.version}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--text-muted)]">大小</dt>
+              <dd className="font-mono tabular-nums">
+                {formatBytes(stats.activeCodePackage.sizeBytes)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--text-muted)]">构建时间</dt>
+              <dd>
+                {new Date(stats.activeCodePackage.builtAt).toLocaleString(
+                  'zh-CN'
+                )}
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-3">
+            <div className="text-xs text-[var(--text-muted)] mb-1">
+              代码哈希 (SHA-256)
+            </div>
+            <div className="font-mono text-xs break-all bg-[var(--surface-2)] rounded-xl p-3">
+              {stats.activeCodePackage.codeHash}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 24h 心跳趋势 */}
         <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6">
@@ -215,6 +290,47 @@ export default function DashboardClient({ stats }: { stats: Stats }) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* 最近登录记录 */}
+      <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6">
+        <div className="mb-4">
+          <h2 className="font-bold tracking-tight">最近登录记录</h2>
+          <p className="text-xs text-[var(--text-muted)]">
+            LokiUser 登录的 IP 与地理位置
+          </p>
+        </div>
+        {stats.recentLogins.length === 0 ? (
+          <div className="text-sm text-[var(--text-muted)] py-8 text-center">
+            暂无登录记录
+          </div>
+        ) : (
+          <div className="divide-y divide-[var(--border)]">
+            {stats.recentLogins.map((l, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-4 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate">
+                    {l.nickname || l.username}
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)] truncate">
+                    {l.city ? `${l.city}, ` : ''}
+                    {l.region ? `${l.region}, ` : ''}
+                    {l.country ?? 'Unknown'}
+                  </div>
+                </div>
+                <div className="font-mono text-xs tabular-nums text-right flex-shrink-0">
+                  {l.ip}
+                </div>
+                <div className="text-xs text-[var(--text-muted)] w-32 text-right flex-shrink-0">
+                  {timeAgo(l.createdAt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

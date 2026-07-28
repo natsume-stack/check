@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     return encryptedJsonResponse(fail('UNAUTHORIZED', 'Not authenticated'), req);
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.lokiUser.findUnique({
     where: { id: claims.sub },
     select: { username: true, nickname: true },
   });

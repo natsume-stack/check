@@ -7,6 +7,7 @@ const PUBLIC_PREFIXES = [
   '/api/auth/register',
   '/api/auth/me',
   '/api/health', // 保活探针，公开访问
+  '/api/migrate', // 临时迁移接口，一次性密钥鉴权
   '/admin/pack', // Bearer token 鉴权，不走 cookie
 ];
 
@@ -34,8 +35,8 @@ const ALLOWED_ORIGINS = [
 // ─── 基于角色的路径访问控制 ───────────────────────────
 //
 // USER        → 仅 /（仪表盘）+ /api/admin/stats
-// AGENT       → + /users, /api/admin/users/*
-// SUPER_ADMIN → + /programs, /api/admin/programs/*, /api/admin/code-packages/*
+// AGENT       → + /users, /api/admin/users/*（管理 LokiUser）
+// SUPER_ADMIN → + /programs, /api/admin/code-packages/*, /api/admin/admin-users/*
 //
 // 注意：middleware 仅做粗粒度拦截，API 内部仍需用 requireAgent/requireSuperAdmin
 // 做深度防御（防中间件绕过）。
@@ -49,8 +50,8 @@ const AGENT_ONLY_PREFIXES = [
 
 const SUPER_ADMIN_ONLY_PREFIXES = [
   '/programs',
-  '/api/admin/programs',
   '/api/admin/code-packages',
+  '/api/admin/admin-users',
 ];
 
 function getAllowedOrigin(req: NextRequest): string | null {
@@ -140,12 +141,22 @@ export async function middleware(req: NextRequest) {
   }
 
   let role: string | undefined;
+  let tokenType: string | undefined;
   try {
     const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
     role = payload.role as string | undefined;
+    tokenType = payload.type as string | undefined;
   } catch {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+    }
+    return NextResponse.redirect(new URL('/login', req.url));
+  }
+
+  // 防越权：loki token 不能访问管理后台
+  if (tokenType !== 'admin') {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Forbidden: admin token required' }, { status: 403 });
     }
     return NextResponse.redirect(new URL('/login', req.url));
   }

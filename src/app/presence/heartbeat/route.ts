@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   // 更新心跳时间 + 创建 heartbeat 记录
   await prisma.$transaction([
-    prisma.user.update({
+    prisma.lokiUser.update({
       where: { id: claims.sub },
       data: { lastSeenAt: new Date() },
     }),

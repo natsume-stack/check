@@ -1,11 +1,11 @@
 /**
- * POST /auth/register — LokiBox 客户端注册
+ * POST /auth/register — LokiBox 客户端注册（LokiUser 表）
  *
  * 请求体（加密后）：
  *   { username, password, auth?, fingerprint }
  *
  * 响应（加密后）：
- *   ok({ token: <JWT> })  — JWT 同时作为 LokiBox 的 Bearer token
+ *   ok({ token: <JWT> })  — JWT (type='loki') 作为 Bearer token
  */
 
 import { NextRequest } from 'next/server';
@@ -15,7 +15,6 @@ import {
   fail,
   hashPassword,
   signJwt,
-  type ApiResponse,
 } from '@/lib/crypto';
 import {
   parseEncryptedRequest,
@@ -23,6 +22,7 @@ import {
   getClientIp,
 } from '@/lib/request';
 import { locateIp } from '@/lib/ip-locate';
+import { checkRateLimit } from '@/lib/security';
 
 interface RegisterPayload {
   username: string;
@@ -34,6 +34,16 @@ interface RegisterPayload {
 const USERNAME_RE = /^[a-zA-Z0-9_-]{3,20}$/;
 
 export async function POST(req: NextRequest) {
+  // IP 维度限流（LokiBox 客户端注册）：1 小时内最多 5 次
+  const clientIp = getClientIp(req);
+  const rl = checkRateLimit(clientIp, { key: 'loki-register', windowMs: 3_600_000, max: 5 });
+  if (!rl.ok) {
+    return encryptedJsonResponse(
+      fail('RATE_LIMITED', 'Too many registrations from this IP'),
+      req
+    );
+  }
+
   const parsed = await parseEncryptedRequest<RegisterPayload>(req);
 
   if (!parsed.replayValid) {
@@ -73,8 +83,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 重复用户
-  const exists = await prisma.user.findUnique({ where: { username } });
+  // 重复用户（查 LokiUser 表）
+  const exists = await prisma.lokiUser.findUnique({ where: { username } });
   if (exists) {
     return encryptedJsonResponse(
       fail('ALREADY_EXISTS', 'Username already taken'),
@@ -82,9 +92,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 创建用户
+  // 创建 LokiUser
   const passwordHash = await hashPassword(password);
-  const user = await prisma.user.create({
+  const user = await prisma.lokiUser.create({
     data: {
       username,
       passwordHash,
@@ -115,16 +125,16 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  await prisma.user.update({
+  await prisma.lokiUser.update({
     where: { id: user.id },
     data: { lastSeenAt: new Date() },
   });
 
-  // 签发 JWT
+  // 签发 JWT（type='loki'）
   const token = await signJwt({
     sub: user.id,
     username: user.username,
-    role: user.role,
+    type: 'loki',
   });
 
   return encryptedJsonResponse(ok({ token }, 'Registered'), req);

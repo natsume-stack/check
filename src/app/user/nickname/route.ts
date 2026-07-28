@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     return encryptedJsonResponse(fail('VALIDATION_ERROR', 'Invalid nickname'), req);
   }
 
-  await prisma.user.update({
+  await prisma.lokiUser.update({
     where: { id: claims.sub },
     data: { nickname },
   });

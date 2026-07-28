@@ -83,9 +83,48 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // 完整性校验：客户端上报的 code_hash 必须与服务端 Session 中记录的一致
+  // 防止客户端篡改代码包后继续心跳
+  if (parsed.sessionId && payload.code_hash) {
+    const session = await prisma.session.findUnique({
+      where: { id: parsed.sessionId },
+      select: { codeHash: true, revokedAt: true },
+    }).catch(() => null);
+
+    if (session?.codeHash && session.codeHash !== payload.code_hash) {
+      // codeHash 不匹配，说明客户端篡改了代码包
+      await prisma.session.update({
+        where: { id: parsed.sessionId },
+        data: {
+          revokedAt: new Date(),
+          revokedReason: 'INTEGRITY_FAIL',
+        },
+      }).catch(() => {});
+
+      await prisma.auditLog.create({
+        data: {
+          actorId: null, // LokiUser 不是 AdminUser，actorId 留空
+          action: 'INTEGRITY_FAIL',
+          target: parsed.sessionId,
+          meta: {
+            lokiUserId: claims.sub,
+            lokiUsername: claims.username,
+            expected: session.codeHash,
+            reported: payload.code_hash,
+          },
+        },
+      }).catch(() => {});
+
+      return encryptedJsonResponse(
+        fail('INTEGRITY_FAIL', 'Code hash mismatch, session revoked'),
+        req
+      );
+    }
+  }
+
   // 状态 ok：更新心跳时间 + 创建 heartbeat 记录
   await prisma.$transaction([
-    prisma.user.update({
+    prisma.lokiUser.update({
       where: { id: claims.sub },
       data: { lastSeenAt: new Date() },
     }),

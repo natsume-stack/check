@@ -30,10 +30,12 @@ async function fetchStats() {
     mapAgg,
     recentHeartbeats,
     lastHeartbeat,
+    recentLogins,
+    activeCodePackage,
   ] = await Promise.all([
-    prisma.user.count(),
-    prisma.user.count({ where: { lastSeenAt: { gt: onlineCutoff } } }),
-    prisma.user.count({ where: { createdAt: { gt: todayStart } } }),
+    prisma.lokiUser.count(),
+    prisma.lokiUser.count({ where: { lastSeenAt: { gt: onlineCutoff } } }),
+    prisma.lokiUser.count({ where: { createdAt: { gt: todayStart } } }),
     prisma.loginRecord.count({
       where: { createdAt: { gt: todayStart }, success: true },
     }),
@@ -62,6 +64,32 @@ async function fetchStats() {
       where: { createdAt: { gt: dayAgo } },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
+    }),
+    // 最近登录记录（IP + 位置）
+    prisma.loginRecord.findMany({
+      where: { success: true },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+      select: {
+        ip: true,
+        country: true,
+        region: true,
+        city: true,
+        createdAt: true,
+        user: { select: { username: true, nickname: true } },
+      },
+    }),
+    // 当前激活的代码包版本
+    prisma.codePackage.findFirst({
+      where: { isActive: true },
+      orderBy: { builtAt: 'desc' },
+      select: {
+        featureId: true,
+        version: true,
+        codeHash: true,
+        sizeBytes: true,
+        builtAt: true,
+      },
     }),
   ]);
 
@@ -93,6 +121,24 @@ async function fetchStats() {
     })),
     hourlyHeartbeats,
     lastHeartbeatAt: lastHeartbeat?.createdAt.toISOString() ?? null,
+    recentLogins: recentLogins.map(l => ({
+      ip: l.ip,
+      country: l.country,
+      region: l.region,
+      city: l.city,
+      createdAt: l.createdAt.toISOString(),
+      username: l.user.username,
+      nickname: l.user.nickname,
+    })),
+    activeCodePackage: activeCodePackage
+      ? {
+          featureId: activeCodePackage.featureId,
+          version: activeCodePackage.version,
+          codeHash: activeCodePackage.codeHash,
+          sizeBytes: activeCodePackage.sizeBytes,
+          builtAt: activeCodePackage.builtAt.toISOString(),
+        }
+      : null,
   };
 }
 

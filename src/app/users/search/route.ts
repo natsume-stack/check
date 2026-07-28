@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     return encryptedJsonResponse(ok({ users: [] }), req);
   }
 
-  const users = await prisma.user.findMany({
+  const users = await prisma.lokiUser.findMany({
     where: {
       OR: [
         { username: { contains: kw } },
