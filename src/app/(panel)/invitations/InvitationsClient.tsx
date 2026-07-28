@@ -112,128 +112,133 @@ export default function InvitationsClient({
   const disabledCodes = codes.filter(c => c.disabledAt);
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] p-6 pb-32">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">邀请码管理</h1>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">邀请码管理</h1>
+          <p className="text-sm text-[var(--text-muted)] mt-1">
+            管理 LokiBox 客户端注册邀请码，控制新用户注册入口
+          </p>
+        </div>
+        <button onClick={refreshList} className="h-11 px-4 rounded-2xl text-sm font-semibold bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-2)] transition">
+          刷新
+        </button>
+      </div>
 
-        {/* 创建区域 */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">创建邀请码</h2>
-          <div className="flex flex-wrap gap-4 items-end">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">最大使用次数</label>
-              <input
-                type="number"
-                min={1}
-                max={1000}
-                value={maxUses}
-                onChange={e => setMaxUses(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-28 h-10 rounded-xl border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">有效期(小时, 0=永久)</label>
-              <input
-                type="number"
-                min={0}
-                value={expiresInHours}
-                onChange={e => setExpiresInHours(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-36 h-10 rounded-xl border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
+      {/* 创建区域 */}
+      <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6">
+        <h2 className="font-bold tracking-tight mb-4">创建邀请码</h2>
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">最大使用次数</label>
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={maxUses}
+              onChange={e => setMaxUses(Math.max(1, parseInt(e.target.value) || 1))}
+              className="h-10 w-28 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:border-[var(--brand)]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">有效期(小时, 0=永久)</label>
+            <input
+              type="number"
+              min={0}
+              value={expiresInHours}
+              onChange={e => setExpiresInHours(Math.max(0, parseInt(e.target.value) || 0))}
+              className="h-10 w-36 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:border-[var(--brand)]"
+            />
+          </div>
+          <button
+            onClick={() => handleCreate(false)}
+            disabled={creating}
+            className="h-10 px-5 rounded-xl bg-[var(--brand)] text-[var(--bg)] text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition"
+          >
+            {creating ? '创建中…' : '创建单个'}
+          </button>
+          <div className="flex items-end gap-2">
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={batchCount}
+              onChange={e => setBatchCount(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+              className="h-10 w-20 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:border-[var(--brand)]"
+            />
             <button
-              onClick={() => handleCreate(false)}
+              onClick={() => handleCreate(true)}
               disabled={creating}
-              className="h-10 px-5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              className="h-10 px-5 rounded-xl bg-[var(--surface-2)] text-sm font-semibold hover:opacity-80 disabled:opacity-50 transition"
             >
-              {creating ? '创建中…' : '创建单个'}
+              批量创建
             </button>
-            <div className="flex items-end gap-2">
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={batchCount}
-                onChange={e => setBatchCount(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-20 h-10 rounded-xl border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-              <button
-                onClick={() => handleCreate(true)}
-                disabled={creating}
-                className="h-10 px-5 rounded-xl bg-gray-100 text-gray-900 text-sm font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors"
-              >
-                批量创建
-              </button>
-            </div>
           </div>
-          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-          {success && <p className="mt-3 text-sm text-green-600">{success}</p>}
         </div>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {success && <p className="mt-3 text-sm text-green-600">{success}</p>}
+      </div>
 
-        {/* 活跃邀请码 */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-800">
-              活跃邀请码 <span className="text-gray-400 font-normal">({activeCodes.length})</span>
-            </h2>
-            <button onClick={refreshList} className="text-xs text-gray-500 hover:text-gray-900">刷新</button>
-          </div>
-          {activeCodes.length === 0 ? (
-            <p className="text-sm text-gray-400 py-8 text-center">暂无活跃邀请码</p>
-          ) : (
-            <div className="space-y-2">
-              {activeCodes.map(c => (
-                <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-300 transition-colors group">
-                  <code className="flex-1 text-sm font-mono text-gray-900 select-all">{c.code}</code>
-                  <span className="text-xs text-gray-500 whitespace-nowrap">
-                    {c.usedCount}/{c.maxUses} 次
-                  </span>
-                  <span className="text-xs text-gray-400 whitespace-nowrap">
-                    {c.expiresAt ? `过期 ${formatDate(c.expiresAt)}` : '永久'}
-                  </span>
-                  <span className="text-xs text-gray-400 whitespace-nowrap">
-                    {formatDate(c.createdAt)}
-                  </span>
-                  <button
-                    onClick={() => copyText(c.code, c.id)}
-                    className="px-2 py-1 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors"
-                  >
-                    {copied === c.id ? '✓ 已复制' : '复制'}
-                  </button>
-                  <button
-                    onClick={() => handleDisable(c.id)}
-                    className="px-2 py-1 rounded-lg text-xs text-red-500 hover:bg-red-50 transition-colors"
-                  >
-                    禁用
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 已禁用邀请码 */}
-        {disabledCodes.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <h2 className="text-base font-semibold text-gray-800 mb-4">
-              已禁用邀请码 <span className="text-gray-400 font-normal">({disabledCodes.length})</span>
-            </h2>
-            <div className="space-y-2">
-              {disabledCodes.map(c => (
-                <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 opacity-60">
-                  <code className="flex-1 text-sm font-mono text-gray-500 select-all">{shortCode(c.code)}</code>
-                  <span className="text-xs text-gray-400">
-                    {c.usedCount}/{c.maxUses} 次
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    禁用于 {formatDate(c.disabledAt)}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {/* 活跃邀请码 */}
+      <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6">
+        <h2 className="font-bold tracking-tight mb-4">
+          活跃邀请码 <span className="text-[var(--text-muted)] font-normal">({activeCodes.length})</span>
+        </h2>
+        {activeCodes.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)] py-8 text-center">暂无活跃邀请码</p>
+        ) : (
+          <div className="space-y-2">
+            {activeCodes.map(c => (
+              <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors group">
+                <code className="flex-1 text-sm font-mono select-all">{c.code}</code>
+                <span className="text-xs text-[var(--text-muted)] whitespace-nowrap tabular-nums">
+                  {c.usedCount}/{c.maxUses} 次
+                </span>
+                <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+                  {c.expiresAt ? `过期 ${formatDate(c.expiresAt)}` : '永久'}
+                </span>
+                <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+                  {formatDate(c.createdAt)}
+                </span>
+                <button
+                  onClick={() => copyText(c.code, c.id)}
+                  className="px-2 py-1 rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--surface-2)] transition-colors"
+                >
+                  {copied === c.id ? '✓ 已复制' : '复制'}
+                </button>
+                <button
+                  onClick={() => handleDisable(c.id)}
+                  className="px-2 py-1 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-500/10 transition-colors"
+                >
+                  禁用
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
+
+      {/* 已禁用邀请码 */}
+      {disabledCodes.length > 0 && (
+        <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6">
+          <h2 className="font-bold tracking-tight mb-4">
+            已禁用邀请码 <span className="text-[var(--text-muted)] font-normal">({disabledCodes.length})</span>
+          </h2>
+          <div className="space-y-2">
+            {disabledCodes.map(c => (
+              <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] opacity-60">
+                <code className="flex-1 text-sm font-mono text-[var(--text-muted)] select-all">{shortCode(c.code)}</code>
+                <span className="text-xs text-[var(--text-muted)] tabular-nums">
+                  {c.usedCount}/{c.maxUses} 次
+                </span>
+                <span className="text-xs text-[var(--text-muted)]">
+                  禁用于 {formatDate(c.disabledAt)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

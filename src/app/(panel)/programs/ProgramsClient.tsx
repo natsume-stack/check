@@ -180,7 +180,7 @@ export default function ProgramsClient({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-end justify-between gap-4">
         <div>
@@ -192,7 +192,7 @@ export default function ProgramsClient({
         <button
           onClick={refreshList}
           disabled={refreshing}
-          className="h-10 px-4 rounded-xl glass font-semibold text-sm hover:opacity-80 transition disabled:opacity-50"
+          className="h-10 px-4 rounded-xl bg-[var(--surface)] border border-[var(--border)] font-semibold text-sm hover:opacity-80 transition disabled:opacity-50"
         >
           {refreshing ? '刷新中…' : '↻ 刷新'}
         </button>
@@ -216,13 +216,13 @@ export default function ProgramsClient({
           当前激活版本
         </h2>
         {activePackages.length === 0 ? (
-          <div className="rounded-2xl glass p-8 text-center text-sm text-[var(--text-muted)]">
+          <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-8 text-center text-sm text-[var(--text-muted)]">
             尚无激活的代码包，请上传第一个版本
           </div>
         ) : (
           <div className="grid gap-4">
             {activePackages.map(p => (
-              <div key={p.id} className="rounded-2xl glass p-6 relative overflow-hidden">
+              <div key={p.id} className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6 relative overflow-hidden">
                 <div className="absolute top-0 right-0 px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-500 rounded-bl-xl">
                   Active
                 </div>
@@ -293,7 +293,7 @@ export default function ProgramsClient({
         </h2>
         <form
           onSubmit={handleUpload}
-          className="rounded-2xl glass p-6 space-y-4"
+          className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-4"
         >
           <div className="flex gap-2">
             <button
@@ -436,11 +436,11 @@ export default function ProgramsClient({
           历史版本 ({packages.length})
         </h2>
         {packages.length === 0 ? (
-          <div className="rounded-2xl glass p-8 text-center text-sm text-[var(--text-muted)]">
+          <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-8 text-center text-sm text-[var(--text-muted)]">
             暂无代码包
           </div>
         ) : (
-          <div className="rounded-2xl glass overflow-hidden">
+          <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[720px]">
                 <thead>
