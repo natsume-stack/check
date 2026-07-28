@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db execute --file prisma/pre-push.sql --schema prisma/schema.prisma && prisma db push --accept-data-loss && tsx prisma/seed.ts && next build",
+    "build": "prisma generate && prisma db push --accept-data-loss && next build",
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
