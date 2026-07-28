@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 
 const MapView = dynamic(() => import('@/components/MapView'), { ssr: false });
 
-type LokiUserStatus = 'ACTIVE' | 'BANNED' | 'EXPIRED' | 'SUSPENDED';
+type LokiUserStatus = 'ACTIVE' | 'BANNED' | 'EXPIRED';
 
 interface User {
   id: string;
@@ -57,7 +57,6 @@ const STATUS_META: Record<
   ACTIVE: { label: '正常', cls: 'bg-green-500/10 text-green-600' },
   BANNED: { label: '已封禁', cls: 'bg-red-500/10 text-red-600' },
   EXPIRED: { label: '已到期', cls: 'bg-orange-500/10 text-orange-600' },
-  SUSPENDED: { label: '已暂停', cls: 'bg-yellow-500/10 text-yellow-600' },
 };
 
 function expiryLabel(iso: string | null): { text: string; expired: boolean } {
@@ -143,12 +142,6 @@ export default function UsersClient({ initialUsers }: { initialUsers: User[] }) 
   function handleUnban(u: User) {
     if (!window.confirm(`确认解封 @${u.username}？`)) return;
     void callAction(u.id, 'unban');
-  }
-
-  function handleSuspend(u: User) {
-    const reason = window.prompt('暂停原因', '账号已被暂停');
-    if (reason === null) return;
-    void callAction(u.id, 'suspend', { reason });
   }
 
   function handleExpiry(u: User) {
@@ -378,22 +371,13 @@ export default function UsersClient({ initialUsers }: { initialUsers: User[] }) 
                         解封
                       </button>
                     ) : (
-                      <>
-                        <button
-                          disabled={busy}
-                          onClick={() => handleBan(selected)}
-                          className="px-3 h-9 rounded-xl text-xs font-semibold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition disabled:opacity-50"
-                        >
-                          封禁
-                        </button>
-                        <button
-                          disabled={busy}
-                          onClick={() => handleSuspend(selected)}
-                          className="px-3 h-9 rounded-xl text-xs font-semibold bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 transition disabled:opacity-50"
-                        >
-                          暂停
-                        </button>
-                      </>
+                      <button
+                        disabled={busy}
+                        onClick={() => handleBan(selected)}
+                        className="px-3 h-9 rounded-xl text-xs font-semibold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition disabled:opacity-50"
+                      >
+                        封禁
+                      </button>
                     )}
                     <button
                       disabled={busy}

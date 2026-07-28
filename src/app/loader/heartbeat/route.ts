@@ -6,7 +6,7 @@
  *
  * 状态不 ok 时：
  *   - 吊销当前 session
- *   - 返回 fail('ACCOUNT_BANNED' | 'ACCOUNT_EXPIRED' | 'ACCOUNT_SUSPENDED')
+ *   - 返回 fail('ACCOUNT_BANNED' | 'ACCOUNT_EXPIRED')
  *   - 客户端收到后应立即退出
  */
 
@@ -31,7 +31,6 @@ interface HeartbeatPayload {
 const STATUS_FAIL_CODE: Record<string, string> = {
   BANNED: 'ACCOUNT_BANNED',
   EXPIRED: 'ACCOUNT_EXPIRED',
-  SUSPENDED: 'ACCOUNT_SUSPENDED',
 };
 
 export async function POST(req: NextRequest) {

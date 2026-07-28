@@ -249,11 +249,12 @@ export async function validateFingerprint(userId: string, fp?: string): Promise<
 
 export type UserCheckResult =
   | { ok: true }
-  | { ok: false; reason: 'BANNED' | 'EXPIRED' | 'SUSPENDED'; message: string };
+  | { ok: false; reason: 'BANNED' | 'EXPIRED'; message: string };
 
 /**
- * 检查 LokiUser 账号状态：是否封禁/到期/暂停
+ * 检查 LokiUser 账号状态：是否封禁/到期
  * 在登录和心跳时都会调用
+ * 注意：暂停功能已移除，历史 SUSPENDED 用户视为封禁处理
  */
 export async function checkUserStatus(userId: string): Promise<UserCheckResult> {
   const user = await prisma.lokiUser.findUnique({
@@ -264,19 +265,12 @@ export async function checkUserStatus(userId: string): Promise<UserCheckResult> 
     return { ok: false, reason: 'BANNED', message: '账号不存在' };
   }
 
-  if (user.status === 'BANNED') {
+  // BANNED 或历史遗留的 SUSPENDED 状态统一视为封禁
+  if (user.status === 'BANNED' || user.status === 'SUSPENDED') {
     return {
       ok: false,
       reason: 'BANNED',
       message: user.bannedReason ?? '账号已被封禁',
-    };
-  }
-
-  if (user.status === 'SUSPENDED') {
-    return {
-      ok: false,
-      reason: 'SUSPENDED',
-      message: '账号已被暂停，请联系管理员',
     };
   }
 

@@ -52,6 +52,8 @@ export default async function UsersPage() {
 
   const serialized = users.map(u => ({
     ...u,
+    // 暫停功能已移除，歷史 SUSPENDED 狀態統一顯示為 BANNED
+    status: u.status === 'SUSPENDED' ? 'BANNED' : u.status,
     createdAt: u.createdAt.toISOString(),
     lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
     bannedAt: u.bannedAt?.toISOString() ?? null,

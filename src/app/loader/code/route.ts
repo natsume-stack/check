@@ -38,7 +38,6 @@ async function isPackDistributionDisabled(): Promise<boolean> {
 const STATUS_FAIL_CODE: Record<string, string> = {
   BANNED: 'ACCOUNT_BANNED',
   EXPIRED: 'ACCOUNT_EXPIRED',
-  SUSPENDED: 'ACCOUNT_SUSPENDED',
 };
 
 export async function POST(req: NextRequest) {

@@ -17,7 +17,6 @@ import { checkRateLimit } from '@/lib/security';
 const STATUS_FAIL_CODE: Record<string, string> = {
   BANNED: 'ACCOUNT_BANNED',
   EXPIRED: 'ACCOUNT_EXPIRED',
-  SUSPENDED: 'ACCOUNT_SUSPENDED',
 };
 
 interface SearchPayload {

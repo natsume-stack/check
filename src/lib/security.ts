@@ -213,7 +213,6 @@ export type AuditAction =
   | 'admin.change_role'
   | 'user.ban'
   | 'user.unban'
-  | 'user.suspend'
   | 'user.set_expiry'
   | 'user.patch'
   | 'user.delete'
