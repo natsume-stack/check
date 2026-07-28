@@ -64,6 +64,18 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    href: '/invitations',
+    label: '邀请码',
+    minRole: 'SUPER_ADMIN',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M4 4h16v16H4z" />
+        <path d="M4 12h16" />
+        <path d="M12 4v16" />
+      </svg>
+    ),
+  },
 ];
 
 const ROLE_LEVEL: Record<Role, number> = {

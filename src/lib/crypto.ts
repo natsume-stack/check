@@ -14,12 +14,12 @@ import crypto from 'node:crypto';
 
 // ─── BootstrapKey（与客户端硬编码一致）──────────────
 
-const BOOTSTRAP_KEY_B64 =
-  process.env.BOOTSTRAP_KEY_B64 ??
-  '105DTeoxSkrA76RQSMtyP56CXlzraLK41A1avgw+FnY=';
-
 function bsKeyBytes(): Buffer {
-  return Buffer.from(BOOTSTRAP_KEY_B64, 'base64');
+  const key = process.env.BOOTSTRAP_KEY_B64;
+  if (!key) {
+    throw new Error('BOOTSTRAP_KEY_B64 environment variable is not set');
+  }
+  return Buffer.from(key, 'base64');
 }
 
 /** 服务端导出 BootstrapKey 为 Web Crypto CryptoKey（用于加解密 */
@@ -90,7 +90,7 @@ export async function decryptPayload<T = unknown>(
   return JSON.parse(Buffer.from(plain).toString('utf8')) as T;
 }
 
-// ─── HMAC 防重放 ───────────────────────────────────
+// ─── 时间戳防重放 ───────────────────────────────────
 
 const REPLAY_WINDOW_MS = 60_000; // ±60s
 
@@ -99,20 +99,56 @@ export function verifyTimestamp(timestamp: number): boolean {
   return Math.abs(now - timestamp) <= REPLAY_WINDOW_MS;
 }
 
-export function hmacSign(message: string): string {
-  const secret = process.env.HMAC_SECRET ?? 'default-hmac-secret-change-me';
-  return crypto
-    .createHmac('sha256', secret)
-    .update(message)
-    .digest('base64');
+// ─── 代码包静态加密（AES-256-GCM at rest）────────────
+
+/** 获取代码包加密密钥（32 字节，base64 编码） */
+function getPackEncryptionKey(): Buffer {
+  const key = process.env.PACK_ENCRYPTION_KEY;
+  if (!key) {
+    throw new Error('PACK_ENCRYPTION_KEY environment variable is not set');
+  }
+  const buf = Buffer.from(key, 'base64');
+  if (buf.length !== 32) {
+    throw new Error('PACK_ENCRYPTION_KEY must be 32 bytes (base64 encoded)');
+  }
+  return buf;
 }
 
-export function hmacVerify(message: string, signature: string): boolean {
-  const expected = hmacSign(message);
-  return crypto.timingSafeEqual(
-    Buffer.from(expected, 'base64'),
-    Buffer.from(signature, 'base64')
+/** 加密代码包，返回 JSON 字符串（含 iv + data + authTag） */
+export function encryptCodeAtRest(code: string): string {
+  const key = getPackEncryptionKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(code, 'utf8'),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+  return JSON.stringify({
+    data: encrypted.toString('base64'),
+    iv: iv.toString('base64'),
+    authTag: authTag.toString('base64'),
+  });
+}
+
+/** 解密代码包，返回明文 JS 源码 */
+export function decryptCodeAtRest(stored: string): string {
+  const key = getPackEncryptionKey();
+  const parsed = JSON.parse(stored) as {
+    data: string;
+    iv: string;
+    authTag: string;
+  };
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    key,
+    Buffer.from(parsed.iv, 'base64')
   );
+  decipher.setAuthTag(Buffer.from(parsed.authTag, 'base64'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(parsed.data, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
 }
 
 // ─── 密码哈希 ──────────────────────────────────────
@@ -157,6 +193,8 @@ export interface LokiJwtClaims {
   sub: string;        // LokiUser.id
   username: string;
   type: 'loki';       // 区分 token 类型
+  fp?: string;        // 设备指纹（绑定登录设备）
+  sid?: string;       // Session ID（绑定 session，防盗用）
 }
 
 /** 兼容旧代码的联合类型 */
@@ -181,6 +219,8 @@ export async function verifyJwt(token: string): Promise<JwtClaims | null> {
         sub: payload.sub as string,
         username: payload.username as string,
         type: 'loki',
+        fp: payload.fp as string | undefined,
+        sid: payload.sid as string | undefined,
       };
     }
     return {

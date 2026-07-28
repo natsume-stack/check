@@ -52,7 +52,7 @@ const STATUS_FAIL_CODE: Record<string, string> = {
 export async function POST(req: NextRequest) {
   // IP 维度限流（防扫描爆破）
   const clientIp = getClientIp(req);
-  const rl = checkRateLimit(clientIp, { key: 'loki-login', windowMs: 60_000, max: 15 });
+  const rl = await checkRateLimit(clientIp, { key: 'loki-login', windowMs: 60_000, max: 15 });
   if (!rl.ok) {
     return encryptedJsonResponse(
       fail('RATE_LIMITED', 'Too many requests, please try again later'),
@@ -206,11 +206,14 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // 签发 JWT（type='loki'）
+  // 签发 JWT（type='loki'，绑定设备指纹 + session）
+  // sid 字段绑定 session，登出/封禁时吊销 session 即可使 JWT 失效
   const token = await signJwt({
     sub: user.id,
     username: user.username,
     type: 'loki',
+    fp: fingerprint,
+    sid: session.id,
   });
 
   const features = await getAvailableFeatures();

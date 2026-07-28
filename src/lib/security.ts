@@ -35,14 +35,14 @@ export function csrfErrorResponse(): NextResponse {
   );
 }
 
-// ─── IP 限流 ─────────────────────────────────────
+// ─── IP 限流（DB 持久化 + 内存快速路径）────────────
 
 interface RateBucket {
   count: number;
   resetAt: number;
 }
 
-// 进程内限流（Vercel Serverless 每个实例独立，配合 TiDB 持久化作为深度防御）
+// 进程内限流（快速路径，Vercel Serverless 每个实例独立）
 const IP_BUCKETS = new Map<string, RateBucket>();
 
 // 定期清理过期 bucket（每 5 分钟）
@@ -73,38 +73,77 @@ export interface RateLimitResult {
   resetAt: number;
 }
 
-/** 进程内 IP 维度限流，返回是否允许通过 */
-export function checkRateLimit(
+/**
+ * DB 持久化限流 — 跨 Serverless 实例共享计数。
+ *
+ * 使用 upsert 原子操作：如果桶不存在则创建（count=1），
+ * 如果存在则 count+1。窗口过期后自动重置。
+ *
+ * 安全策略：DB 故障时 fail-closed（拒绝请求），防止限流被绕过。
+ */
+export async function checkRateLimit(
   ip: string,
   opts: RateLimitOptions
-): RateLimitResult {
-  cleanupBuckets();
-
+): Promise<RateLimitResult> {
   const windowMs = opts.windowMs ?? 60_000;
   const max = opts.max ?? 10;
   const now = Date.now();
   const bucketKey = `${opts.key}:${ip}`;
+  const expiresAt = new Date(now + windowMs);
+  const nowDate = new Date(now);
 
-  const existing = IP_BUCKETS.get(bucketKey);
-  if (!existing || now > existing.resetAt) {
+  // 内存快速路径：同实例内高频请求先拦截
+  cleanupBuckets();
+  const memBucket = IP_BUCKETS.get(bucketKey);
+  if (memBucket && now <= memBucket.resetAt) {
+    memBucket.count++;
+    if (memBucket.count > max) {
+      return { ok: false, remaining: 0, resetAt: memBucket.resetAt };
+    }
+  } else {
     IP_BUCKETS.set(bucketKey, { count: 1, resetAt: now + windowMs });
-    return { ok: true, remaining: max - 1, resetAt: now + windowMs };
   }
 
-  existing.count++;
-  if (existing.count > max) {
+  // DB 权威计数 — 使用原子 INSERT ... ON DUPLICATE KEY UPDATE 防止竞态条件
+  // 单条 SQL 完成：不存在则创建(count=1)，已过期则重置(count=1)，未过期则递增(count+1)
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO RateLimitBucket (id, bucketKey, count, windowStart, expiresAt)
+      VALUES (UUID(), ${bucketKey}, 1, ${nowDate}, ${expiresAt})
+      ON DUPLICATE KEY UPDATE
+        count = IF(expiresAt < ${nowDate}, 1, count + 1),
+        windowStart = IF(expiresAt < ${nowDate}, ${nowDate}, windowStart),
+        expiresAt = IF(expiresAt < ${nowDate}, ${expiresAt}, expiresAt)
+    `;
+
+    // 读取更新后的计数
+    const bucket = await prisma.rateLimitBucket.findUnique({
+      where: { bucketKey },
+      select: { count: true, expiresAt: true },
+    });
+
+    if (!bucket) {
+      // 极端情况：INSERT 和 ON DUPLICATE KEY UPDATE 都没生效
+      return { ok: true, remaining: max - 1, resetAt: now + windowMs };
+    }
+
+    if (bucket.count > max) {
+      return { ok: false, remaining: 0, resetAt: bucket.expiresAt.getTime() };
+    }
+
+    return {
+      ok: true,
+      remaining: max - bucket.count,
+      resetAt: bucket.expiresAt.getTime(),
+    };
+  } catch {
+    // DB 故障时 fail-closed：拒绝请求（防止限流被绕过）
     return {
       ok: false,
       remaining: 0,
-      resetAt: existing.resetAt,
+      resetAt: now + windowMs,
     };
   }
-
-  return {
-    ok: true,
-    remaining: max - existing.count,
-    resetAt: existing.resetAt,
-  };
 }
 
 export function rateLimitResponse(result: RateLimitResult): NextResponse {

@@ -15,6 +15,7 @@ import {
   fail,
   hashPassword,
   signJwt,
+  generateSessionKey,
 } from '@/lib/crypto';
 import {
   parseEncryptedRequest,
@@ -29,6 +30,7 @@ interface RegisterPayload {
   password: string;
   auth?: string;       // Box3 平台 Authorization，可选
   fingerprint?: string;
+  invitationCode?: string; // 邀请码（必填）
 }
 
 const USERNAME_RE = /^[a-zA-Z0-9_-]{3,20}$/;
@@ -36,7 +38,7 @@ const USERNAME_RE = /^[a-zA-Z0-9_-]{3,20}$/;
 export async function POST(req: NextRequest) {
   // IP 维度限流（LokiBox 客户端注册）：1 小时内最多 5 次
   const clientIp = getClientIp(req);
-  const rl = checkRateLimit(clientIp, { key: 'loki-register', windowMs: 3_600_000, max: 5 });
+  const rl = await checkRateLimit(clientIp, { key: 'loki-register', windowMs: 3_600_000, max: 5 });
   if (!rl.ok) {
     return encryptedJsonResponse(
       fail('RATE_LIMITED', 'Too many registrations from this IP'),
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { username, password, fingerprint } = payload;
+  const { username, password, fingerprint, invitationCode } = payload;
 
   // 校验
   if (!username || !password) {
@@ -70,6 +72,49 @@ export async function POST(req: NextRequest) {
       req
     );
   }
+
+  // 邀请码校验（必填）
+  if (!invitationCode) {
+    return encryptedJsonResponse(
+      fail('INVITATION_REQUIRED', '邀请码必填'),
+      req
+    );
+  }
+
+  // 验证邀请码
+  const invite = await prisma.invitationCode.findUnique({
+    where: { code: invitationCode },
+  });
+
+  if (!invite) {
+    return encryptedJsonResponse(
+      fail('INVALID_INVITATION', '邀请码无效'),
+      req
+    );
+  }
+
+  // 检查邀请码状态
+  if (invite.disabledAt) {
+    return encryptedJsonResponse(
+      fail('INVALID_INVITATION', '邀请码已被禁用'),
+      req
+    );
+  }
+
+  if (invite.expiresAt && invite.expiresAt < new Date()) {
+    return encryptedJsonResponse(
+      fail('INVALID_INVITATION', '邀请码已过期'),
+      req
+    );
+  }
+
+  if (invite.usedCount >= invite.maxUses) {
+    return encryptedJsonResponse(
+      fail('INVALID_INVITATION', '邀请码使用次数已达上限'),
+      req
+    );
+  }
+
   if (!USERNAME_RE.test(username)) {
     return encryptedJsonResponse(
       fail('VALIDATION_ERROR', 'Invalid username format'),
@@ -130,14 +175,32 @@ export async function POST(req: NextRequest) {
     data: { lastSeenAt: new Date() },
   });
 
-  // 签发 JWT（type='loki'）
+  // 增加邀请码使用次数
+  await prisma.invitationCode.update({
+    where: { id: invite.id },
+    data: { usedCount: { increment: 1 } },
+  });
+
+  // 创建 Session 并绑定 JWT
+  const sessionKey = generateSessionKey();
+  const session = await prisma.session.create({
+    data: {
+      userId: user.id,
+      sessionKey,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  // 签发 JWT（type='loki'，绑定设备指纹 + session）
   const token = await signJwt({
     sub: user.id,
     username: user.username,
     type: 'loki',
+    fp: fingerprint,
+    sid: session.id,
   });
 
-  return encryptedJsonResponse(ok({ token }, 'Registered'), req);
+  return encryptedJsonResponse(ok({ token, sessionId: session.id, sessionKey }, 'Registered'), req);
 }
 
 export const dynamic = 'force-dynamic';

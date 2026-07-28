@@ -25,7 +25,7 @@ import { checkRateLimit } from '@/lib/security';
 export async function GET(req: NextRequest) {
   // IP 维度限流（防 DoS 刷 session 表）
   const ip = getClientIp(req);
-  const rl = checkRateLimit(ip, { key: 'session-handshake', windowMs: 60_000, max: 30 });
+  const rl = await checkRateLimit(ip, { key: 'session-handshake', windowMs: 60_000, max: 30 });
   if (!rl.ok) {
     return encryptedJsonResponse(
       fail('RATE_LIMITED', 'Too many handshake requests'),

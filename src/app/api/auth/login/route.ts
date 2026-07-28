@@ -24,7 +24,7 @@ interface Body {
 export async function POST(req: NextRequest) {
   // IP 维度限流（防扫描爆破）
   const ip = getClientIp(req);
-  const rl = checkRateLimit(ip, { key: 'admin-login', windowMs: 60_000, max: 10 });
+  const rl = await checkRateLimit(ip, { key: 'admin-login', windowMs: 60_000, max: 10 });
   if (!rl.ok) return rateLimitResponse(rl);
 
   const body = (await req.json()) as Body;

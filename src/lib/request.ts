@@ -34,6 +34,7 @@ export interface ParsedEncryptedRequest<T> {
   iv?: string;
   rawBody: string;
   replayValid: boolean;
+  nonceValid: boolean;
 }
 
 /** 解析 LokiBox 兼容的加密请求 */
@@ -49,11 +50,34 @@ export async function parseEncryptedRequest<T = unknown>(
     ? authHeader.slice(7)
     : undefined;
 
-  const replayValid = !!timestamp && verifyTimestamp(timestamp);
+  const timestampValid = !!timestamp && verifyTimestamp(timestamp);
   const rawBody = await req.text();
 
+  // Nonce 防重放：在时间戳有效的前提下，校验 nonce 是否已被使用
+  // 使用 DB unique constraint 原子操作：create 成功 = 首次使用，P2002 = 重放
+  let nonceValid = false; // fail-closed：默认拒绝，DB 写入成功才放行
+  if (timestampValid && nonce) {
+    try {
+      await prisma.usedNonce.create({ data: { nonce } });
+      nonceValid = true; // create 成功 = 首次使用，放行
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        nonceValid = false; // 唯一约束冲突 = 重放攻击
+      }
+      // 其他 DB 故障也拒绝（fail-closed，防止限流/防重放被绕过）
+    }
+    // 1% 概率清理过期 nonce（超过 2 分钟）
+    if (Math.random() < 0.01) {
+      const cutoff = new Date(Date.now() - 120_000);
+      prisma.usedNonce.deleteMany({ where: { createdAt: { lt: cutoff } } }).catch(() => {});
+    }
+  }
+
+  // replayValid 统一包含时间戳 + nonce 双重校验
+  const replayValid = timestampValid && nonceValid;
+
   let data: T | null = null;
-  if (iv && rawBody && replayValid) {
+  if (iv && rawBody && replayValid && nonceValid) {
     let key = await getBootstrapKey();
 
     if (sessionId) {
@@ -81,6 +105,7 @@ export async function parseEncryptedRequest<T = unknown>(
     iv,
     rawBody,
     replayValid,
+    nonceValid,
   };
 }
 
@@ -102,7 +127,7 @@ function corsHeaders(req: NextRequest): Record<string, string> {
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers':
-        'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id',
+        'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id, X-Fingerprint',
       // 关键：暴露 X-Iv 给 JavaScript，否则跨域时 resp.headers.get('X-Iv') 返回 null
       'Access-Control-Expose-Headers': 'X-Iv, X-Session-Id',
       'Access-Control-Max-Age': '86400',

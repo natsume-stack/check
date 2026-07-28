@@ -58,8 +58,10 @@ const AGENT_ONLY_PREFIXES = [
 const SUPER_ADMIN_ONLY_PREFIXES = [
   '/programs',
   '/admin-users',
+  '/invitations',
   '/api/admin/code-packages',
   '/api/admin/admin-users',
+  '/api/admin/invitations',
 ];
 
 function getAllowedOrigin(req: NextRequest): string | null {
@@ -93,13 +95,28 @@ function hasAccess(role: string | undefined, pathname: string): boolean {
   return false;
 }
 
-/** 安全响应头：防点击劫持、MIME 嗅探、降级攻击，启用 HSTS */
+/** 安全响应头：防点击劫持、MIME 嗅探、降级攻击，启用 HSTS + CSP */
 function withSecurityHeaders(res: NextResponse): NextResponse {
   res.headers.set('X-Content-Type-Options', 'nosniff');
   res.headers.set('X-Frame-Options', 'DENY');
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.headers.set('X-XSS-Protection', '1; mode=block');
   res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // CSP：限制脚本/样式/图片/连接来源，防 XSS 注入
+  res.headers.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https: blob:",
+      "connect-src 'self' https://check.cdk.lat https://static.dao3.fun",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; ')
+  );
   if (process.env.NODE_ENV === 'production') {
     res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
@@ -123,7 +140,7 @@ export async function middleware(req: NextRequest) {
           'Access-Control-Allow-Credentials': 'true',
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers':
-            'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id',
+            'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id, X-Fingerprint',
           'Access-Control-Expose-Headers': 'X-Iv, X-Session-Id',
           'Access-Control-Max-Age': '86400',
           Vary: 'Origin',

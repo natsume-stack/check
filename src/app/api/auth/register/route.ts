@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   // 限流（即使超管也限制创建频率，防误操作刷库）
   const ip = getClientIp(req);
-  const rl = checkRateLimit(ip, { key: 'admin-register', windowMs: 60_000, max: 5 });
+  const rl = await checkRateLimit(ip, { key: 'admin-register', windowMs: 60_000, max: 5 });
   if (!rl.ok) return rateLimitResponse(rl);
 
   const body = (await req.json()) as Body;

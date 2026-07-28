@@ -33,6 +33,8 @@ model AdminUser {
 
   // 审计日志关联
   auditLogs     AuditLog[]
+  // 邀请码关联
+  invitationCodes InvitationCode[] @relation("InvitationCreator")
 
   @@index([username])
 }
@@ -251,4 +253,45 @@ model AuditLog {
   @@index([actorId])
   @@index([createdAt])
   @@index([action])
+}
+
+// ─── 限流计数桶（DB 持久化，跨 Serverless 实例共享）──
+
+model RateLimitBucket {
+  id           String   @id @default(cuid())
+  bucketKey    String   // 格式：{action}:{ip}，如 "loki-login:1.2.3.4"
+  count        Int      @default(1)
+  windowStart  DateTime @default(now())
+  expiresAt    DateTime
+
+  @@unique([bucketKey])
+  @@index([expiresAt])
+}
+
+// ─── Nonce 防重放（DB 持久化，跨 Serverless 实例共享）──
+
+model UsedNonce {
+  nonce       String   @id  // X-Nonce 头的值（UUID）
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// ─── 邀请码（注册控制）──────────────────────────────
+
+model InvitationCode {
+  id           String    @id @default(cuid())
+  code         String    @unique // 邀请码（32 字符 base62）
+  maxUses      Int       @default(1) // 最大使用次数（1=单次使用）
+  usedCount    Int       @default(0) // 已使用次数
+  createdById  String?   // 创建者 AdminUser ID
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime? // 过期时间，null=永久
+  disabledAt   DateTime? // 禁用时间，null=启用中
+
+  // 关联创建者
+  createdBy    AdminUser? @relation("InvitationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([code])
+  @@index([createdById])
 }

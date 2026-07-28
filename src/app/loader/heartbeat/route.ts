@@ -16,8 +16,10 @@ import { ok, fail } from '@/lib/crypto';
 import {
   parseEncryptedRequest,
   encryptedJsonResponse,
+  getClientIp,
 } from '@/lib/request';
-import { getLokiBoxUser, checkUserStatus } from '@/lib/auth';
+import { checkRateLimit } from '@/lib/security';
+import { getLokiBoxUser, checkUserStatus, validateFingerprint } from '@/lib/auth';
 
 interface HeartbeatPayload {
   map_id: string;
@@ -33,6 +35,15 @@ const STATUS_FAIL_CODE: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rl = await checkRateLimit(ip, { key: 'loader-hb', windowMs: 60_000, max: 30 });
+  if (!rl.ok) {
+    return encryptedJsonResponse(
+      fail('RATE_LIMITED', 'Too many requests'),
+      req
+    );
+  }
+
   const parsed = await parseEncryptedRequest<HeartbeatPayload>(req);
 
   if (!parsed.replayValid) {
@@ -50,10 +61,27 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // 设备指纹验证
+  const fpValid = await validateFingerprint(claims.sub, claims.fp);
+  if (!fpValid) {
+    return encryptedJsonResponse(
+      fail('DEVICE_MISMATCH', 'Device fingerprint mismatch, please re-login'),
+      req
+    );
+  }
+
   const payload = parsed.data;
   if (!payload?.map_id) {
     return encryptedJsonResponse(
       fail('VALIDATION_ERROR', 'Missing map_id'),
+      req
+    );
+  }
+
+  // 強制要求 code_hash — 不報告 code_hash 的客戶端視為篡改
+  if (!payload.code_hash) {
+    return encryptedJsonResponse(
+      fail('VALIDATION_ERROR', 'Missing code_hash'),
       req
     );
   }
@@ -83,14 +111,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 完整性校验：客户端上报的 code_hash 必须与服务端 Session 中记录的一致
-  // 防止客户端篡改代码包后继续心跳
-  if (parsed.sessionId && payload.code_hash) {
+  // 完整性校驗：客戶端上報的 code_hash 必須與服務端 Session 中記錄的一致
+  // 防止客戶端篡改代碼包後繼續心跳
+  if (parsed.sessionId) {
     const session = await prisma.session.findUnique({
       where: { id: parsed.sessionId },
       select: { codeHash: true, revokedAt: true },
     }).catch(() => null);
 
+    // 如果 session 有 codeHash 但客戶端報告的不一致，說明篡改
     if (session?.codeHash && session.codeHash !== payload.code_hash) {
       // codeHash 不匹配，说明客户端篡改了代码包
       await prisma.session.update({

@@ -65,6 +65,38 @@ export async function getLokiBoxUser(
   if (!auth.startsWith('Bearer ')) return null;
   const claims = await verifyJwt(auth.slice(7));
   if (!claims || claims.type !== 'loki') return null;
+
+  // ── Session 绑定校验 ──
+  // JWT 必须包含 sid（sessionId），且与请求头 X-Session-Id 一致
+  // 防止被盗的 JWT 与新 session 配合使用
+  if (claims.sid) {
+    const requestSessionId = req.headers.get('X-Session-Id');
+    if (!requestSessionId || requestSessionId !== claims.sid) {
+      return null; // Session 不匹配，拒绝
+    }
+
+    // 检查 session 是否仍然有效（未被吊销、未过期）
+    const session = await prisma.session.findUnique({
+      where: { id: claims.sid },
+      select: { revokedAt: true, expiresAt: true, userId: true },
+    }).catch(() => null);
+
+    if (!session) return null; // Session 不存在
+    if (session.revokedAt) return null; // Session 已被吊销
+    if (session.expiresAt <= new Date()) return null; // Session 已过期
+    if (session.userId !== claims.sub) return null; // Session 不属于该用户
+  }
+
+  // ── 设备指纹校验 ──
+  // 请求头 X-Fingerprint 携带当前设备指纹，必须与 JWT 中的指纹一致
+  // 防止被盗的 JWT 在不同设备上使用
+  if (claims.fp) {
+    const requestFp = req.headers.get('X-Fingerprint');
+    if (!requestFp || requestFp !== claims.fp) {
+      return null; // 指纹不匹配，拒绝
+    }
+  }
+
   return claims;
 }
 
@@ -175,6 +207,22 @@ export async function isUserOnline(userId: string): Promise<boolean> {
 
 export function onlineThresholdMs(): number {
   return ONLINE_THRESHOLD_MS;
+}
+
+// ─── 设备指纹验证（防 token 盗用）────────────────────
+
+/**
+ * 验证 JWT 中的设备指纹是否与数据库存储的一致
+ * 防止被盗的 JWT 在不同设备上使用
+ */
+export async function validateFingerprint(userId: string, fp?: string): Promise<boolean> {
+  if (!fp) return false;
+  const user = await prisma.lokiUser.findUnique({
+    where: { id: userId },
+    select: { fingerprint: true },
+  });
+  if (!user?.fingerprint) return true; // 未记录指纹，放行（兼容旧数据）
+  return user.fingerprint === fp;
 }
 
 // ─── LokiUser 状态校验（加载器核心）─────────────────────

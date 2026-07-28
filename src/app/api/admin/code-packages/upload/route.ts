@@ -3,16 +3,18 @@
  *
  * 请求体：{ featureId, version, code }
  *  - 计算 codeHash（SHA-256 hex）
+ *  - AES-256-GCM 加密后入库（数据库不存明文）
  *  - 将同 featureId 的旧版本设为 isActive=false
  *  - 创建新 CodePackage（isActive=true）
  *  - 创建 AuditLog
  */
 
 import { NextRequest } from 'next/server';
-import { createHash, createHmac } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { requireSuperAdmin } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
+import { encryptCodeAtRest } from '@/lib/crypto';
 
 interface UploadBody {
   featureId?: string;
@@ -35,11 +37,10 @@ export async function POST(req: NextRequest) {
 
   // 计算代码包哈希（SHA-256 hex）和大小
   const codeHash = createHash('sha256').update(code, 'utf8').digest('hex');
-  const sizeBytes = Buffer.byteLength(code, 'utf8');
-  // 计算 HMAC 签名（防篡改，客户端可校验）
-  const hmacSignature = createHmac('sha256', process.env.HMAC_SECRET ?? 'default-hmac-secret-change-me')
-    .update(code, 'utf8')
-    .digest('hex');
+  const sizeBytes = Buffer.byteLength(code, 'utf-8');
+
+  // AES-256-GCM 加密后入库
+  const encryptedCode = encryptCodeAtRest(code);
 
   // 将同 featureId 的旧版本设为 inactive
   await prisma.codePackage.updateMany({
@@ -52,9 +53,9 @@ export async function POST(req: NextRequest) {
     data: {
       featureId,
       version,
-      encryptedCode: code,
+      encryptedCode,
       codeHash,
-      hmacSignature,
+      hmacSignature: '', // 已废弃，保留字段兼容旧数据
       sizeBytes,
       isActive: true,
     },
@@ -75,7 +76,6 @@ export async function POST(req: NextRequest) {
     featureId: pkg.featureId,
     version: pkg.version,
     codeHash: pkg.codeHash,
-    hmacSignature: pkg.hmacSignature,
     sizeBytes: pkg.sizeBytes,
   });
 }

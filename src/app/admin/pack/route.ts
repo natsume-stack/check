@@ -5,14 +5,15 @@
  * 响应：ok({ id, codeHash, sizeBytes, version })
  *
  * 鉴权：Bearer admin token（JWT with role=SUPER_ADMIN）
+ * 安全：代码包入库前用 AES-256-GCM 加密，数据库不存明文
  */
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { ok, fail } from '@/lib/crypto';
+import { ok, fail, encryptCodeAtRest } from '@/lib/crypto';
 import { requireLokiBoxSuperAdmin } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
-import { createHash, createHmac } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 const FEATURE_ID = 'lokibox-pack';
 
@@ -29,16 +30,13 @@ export async function POST(req: NextRequest) {
     return jsonResponse({ error: 'Invalid pack content' }, 400);
   }
 
-  // 计算 hash、HMAC 签名和大小
+  // 计算 hash 和大小
   const codeHash = createHash('sha256').update(code).digest('hex');
-  const hmacSignature = createHmac(
-    'sha256',
-    process.env.HMAC_SECRET ?? 'default-hmac-secret-change-me'
-  )
-    .update(code, 'utf8')
-    .digest('hex');
   const sizeBytes = Buffer.byteLength(code, 'utf-8');
   const version = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+  // AES-256-GCM 加密后入库（数据库不存明文）
+  const encryptedCode = encryptCodeAtRest(code);
 
   // 将旧版本设为 isActive=false
   await prisma.codePackage.updateMany({
@@ -51,9 +49,9 @@ export async function POST(req: NextRequest) {
     data: {
       featureId: FEATURE_ID,
       version,
-      encryptedCode: code,
+      encryptedCode,
       codeHash,
-      hmacSignature,
+      hmacSignature: '', // 已废弃，保留字段兼容旧数据
       sizeBytes,
       isActive: true,
     },
@@ -65,7 +63,7 @@ export async function POST(req: NextRequest) {
       actorId: claims.sub,
       action: 'UPLOAD_CODE',
       target: FEATURE_ID,
-      meta: { version, sizeBytes, codeHash, hmacSignature },
+      meta: { version, sizeBytes, codeHash },
     },
   });
 
@@ -73,7 +71,6 @@ export async function POST(req: NextRequest) {
     ok({
       id: pack.id,
       codeHash,
-      hmacSignature,
       sizeBytes,
       version,
     }, 'Pack uploaded')
