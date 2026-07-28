@@ -86,6 +86,29 @@ export async function parseEncryptedRequest<T = unknown>(
 
 // ─── 加密响应 ──────────────────────────────────────
 
+const ALLOWED_ORIGINS = [
+  'https://view.dao3.fun',
+  'https://dao3.fun',
+  'https://play.dao3.fun',
+  'https://www.dao3.fun',
+];
+
+function corsHeaders(req: NextRequest): Record<string, string> {
+  const origin = req.headers.get('origin');
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    return {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers':
+        'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id',
+      'Access-Control-Max-Age': '86400',
+      Vary: 'Origin',
+    };
+  }
+  return {};
+}
+
 /** 用与请求相同的 sessionKey 加密响应体 */
 export async function encryptedJsonResponse(
   payload: unknown,
@@ -93,6 +116,7 @@ export async function encryptedJsonResponse(
 ): Promise<NextResponse> {
   const sessionId = req.headers.get('X-Session-Id') ?? undefined;
   const iv = req.headers.get('X-IV') ?? undefined;
+  const cors = corsHeaders(req);
 
   // 优先用 sessionKey 加密响应
   if (sessionId && iv) {
@@ -107,6 +131,7 @@ export async function encryptedJsonResponse(
         headers: {
           'Content-Type': 'text/plain',
           'X-Iv': encrypted.iv,
+          ...cors,
         },
       });
     }
@@ -120,6 +145,7 @@ export async function encryptedJsonResponse(
     headers: {
       'Content-Type': 'text/plain',
       'X-Iv': encrypted.iv,
+      ...cors,
     },
   });
 }

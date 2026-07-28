@@ -29,23 +29,6 @@ function getAllowedOrigin(req: NextRequest): string | null {
   return null;
 }
 
-/** 为 LokiBox 加密 API 注入 CORS 响应头 */
-function withCors(res: NextResponse, req: NextRequest): NextResponse {
-  const origin = getAllowedOrigin(req);
-  if (origin) {
-    res.headers.set('Access-Control-Allow-Origin', origin);
-    res.headers.set('Access-Control-Allow-Credentials', 'true');
-    res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.headers.set(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id'
-    );
-    res.headers.set('Access-Control-Max-Age', '86400');
-    res.headers.set('Vary', 'Origin');
-  }
-  return res;
-}
-
 function getJwtSecret(): Uint8Array {
   const s = process.env.JWT_SECRET;
   if (!s) return new Uint8Array();
@@ -56,12 +39,29 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isLokiBoxApi = LOKIBOX_API_PREFIXES.some(p => pathname.startsWith(p));
 
-  // LokiBox 加密 API：处理 preflight + 注入 CORS
+  // LokiBox 加密 API：只处理 OPTIONS preflight（CORS 实际头由路由处理器注入）
+  // 不对正常请求返回 NextResponse.next()，避免覆盖路由响应头（如 X-Iv）
   if (isLokiBoxApi) {
     if (req.method === 'OPTIONS') {
-      return withCors(new NextResponse(null, { status: 204 }), req);
+      const origin = getAllowedOrigin(req);
+      if (origin) {
+        return new NextResponse(null, {
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers':
+              'Content-Type, Authorization, X-TimeStamp, X-Nonce, X-IV, X-Session-Id',
+            'Access-Control-Max-Age': '86400',
+            Vary: 'Origin',
+          },
+        });
+      }
+      return new NextResponse(null, { status: 204 });
     }
-    return withCors(NextResponse.next(), req);
+    // 正常请求直接放行，CORS 响应头由 encryptedJsonResponse 注入
+    return NextResponse.next();
   }
 
   // 公开路径放行
