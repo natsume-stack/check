@@ -1,10 +1,11 @@
 /**
- * POST /session — LokiBox 客户端握手
+ * GET /session — LokiBox 客户端握手
  *
  * 客户端用 BootstrapKey 加密（无 payload），服务端：
- *   1. 创建 Session 记录，生成 32 字节随机 sessionKey
- *   2. 返回 { id, key }，用 BootstrapKey 加密
- *   3. 后续请求双方都用 sessionKey
+ *   1. 如果请求携带有效 JWT（已登录用户），返回 JWT 中绑定的 session
+ *      （避免页面刷新后创建新 session 导致 sid 不匹配）
+ *   2. 否则创建新 Session，生成 32 字节随机 sessionKey
+ *   3. 返回 { id, key }，用 BootstrapKey 或 sessionKey 加密
  *
  * 安全：
  *   - IP 维度限流：60s 内最多 30 次握手（防 DoS 刷 session）
@@ -14,7 +15,7 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { ok, fail, generateSessionKey } from '@/lib/crypto';
+import { ok, fail, generateSessionKey, verifyJwt } from '@/lib/crypto';
 import {
   parseEncryptedRequest,
   encryptedJsonResponse,
@@ -42,7 +43,31 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // 创建新 session
+  // ── 已登录用户：返回 JWT 中绑定的 session ──
+  // 页面刷新时客户端会调用 getSession()，此时用户已登录（有 JWT），
+  // 必须返回与 JWT sid 一致的 session，否则后续所有 API 都会因 sid 不匹配而 401
+  const authHeader = req.headers.get('Authorization') ?? '';
+  if (authHeader.startsWith('Bearer ')) {
+    const claims = await verifyJwt(authHeader.slice(7));
+    if (claims?.type === 'loki' && claims.sid) {
+      const existing = await prisma.session.findUnique({
+        where: { id: claims.sid },
+        select: { id: true, sessionKey: true, expiresAt: true, revokedAt: true },
+      }).catch(() => null);
+
+      if (existing && !existing.revokedAt && existing.expiresAt > new Date()) {
+        return encryptedJsonResponse(
+          ok({
+            id: existing.id,
+            key: existing.sessionKey,
+          }),
+          req
+        );
+      }
+    }
+  }
+
+  // ── 未登录用户：创建新 session ──
   const sessionKey = generateSessionKey();
   const session = await prisma.session.create({
     data: {
